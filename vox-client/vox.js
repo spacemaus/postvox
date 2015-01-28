@@ -48,7 +48,7 @@ P.promisifyAll(lockfile);
 
 
 var PROTOCOL_VERSION = '0.0.0';
-var AGENT_STRING = 'Vox.js 0.0.1';
+var AGENT_STRING = 'Vox.js 0.0.5';
 
 
 
