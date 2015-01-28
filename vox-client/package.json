@@ -1,0 +1,27 @@
+{
+  "name": "vox-client",
+  "version": "0.0.1",
+  "description": "A basic terminal client for the Postvox network",
+  "author": "spacemaus@spacemaus.com",
+  "bin": {
+    "vox": "vox.js"
+  },
+  "scripts": {
+    "vox": "node vox.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "bluebird": "^2.5.3",
+    "colors": "^1.0.3",
+    "debug": "^2.1.0",
+    "json-format": "0.0.1",
+    "lockfile": "^1.0.0",
+    "minimist": "^1.1.0",
+    "mkdirp": "^0.5.0",
+    "moment": "^2.9.0",
+    "ursa": "^0.8.1",
+    "vox-common": "^0.0.1"
+  },
+  "preferGlobal": true,
+  "license": "MIT"
+}
