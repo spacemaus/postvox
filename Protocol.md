@@ -170,6 +170,7 @@ user, but whose signatures do not match the key on file with the Hub.
 
 Signing stanzas
 –-----------------
+
 Every user-generated stanza (messages, subscriptions, status updates) is signed
 with the user's corresponding private key.  Interchange servers and clients must
 verify that the stanzas' signatures match the key on record at the Hub, as of
@@ -245,6 +246,31 @@ metadata.
 
 4. Interchange endpoints
 ===========================
+
+- [Begin or resume a session](#begin-or-resume-a-session)
+- [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
+- [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
+- [Create or update a message](#create-or-update-a-message)
+- [List existing messages](#list-existing-messages)
+- [List replies to a specific message](#list-replies-to-a-specific-message)
+- [List replies to a message thread](#list-replies-to-a-message-thread)
+- [Get the details of an existing message](#get-the-details-of-an-existing-message)
+- [List the subscribers to a given URL](#list-the-subscribers-to-a-given-url)
+- [List the subscriptions of a user](#list-the-subscriptions-of-a-user)
+- [Update a user's profile details](#update-a-users-profile-details)
+- [Read a user's profile details](#read-a-users-profile-details)
+- [Update a user's status](#update-a-users-status)
+- [Read a user's status](#read-a-users-status)
+- [Block a user](#block-a-user)
+- [List a source's blocks](#list-a-sources-blocks)
+
+- [Stanzas](#5-stanzas)
+    - [UserProfile stanza](#userprofile-stanza)
+    - [UserStatus stanza](#userstatus-stanza)
+    - [Message stanza](#message-stanza)
+    - [Subscription stanza](#subscription-stanza)
+    - [Block stanza](#block-stanza)
+
 
 Begin or resume a session
 -----------------------------
