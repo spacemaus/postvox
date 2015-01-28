@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * This is the main script for a Postvox command-line client.  It illustrates
  * how a single-user client may be implemented.
