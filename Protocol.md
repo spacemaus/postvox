@@ -266,11 +266,11 @@ metadata.
 
 Stanzas:
 
-    - [UserProfile stanza](#userprofile-stanza)
-    - [UserStatus stanza](#userstatus-stanza)
-    - [Message stanza](#message-stanza)
-    - [Subscription stanza](#subscription-stanza)
-    - [Block stanza](#block-stanza)
+- [UserProfile stanza](#userprofile-stanza)
+- [UserStatus stanza](#userstatus-stanza)
+- [Message stanza](#message-stanza)
+- [Subscription stanza](#subscription-stanza)
+- [Block stanza](#block-stanza)
 
 
 Begin or resume a session
