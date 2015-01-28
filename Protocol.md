@@ -376,7 +376,7 @@ subscriptionUrl | URL | The URL of the resource that the user is following.
 nick            | String | The nickname of the user who is subscribing.
 weight          | int | The weight of the subscription.  1 or 0, with 1 meaning 'subscribe' and 0 meaning 'unsubscribe'.
 updatedAt       | Timestamp (ms) | The timestamp of the command.  For a given `nick` and URL, the server will accept only commands with a timestamp larger than the largest `updatedAt` received for the given URL so far.
-sig             | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig             | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### Returns
 
@@ -420,7 +420,7 @@ text      | String | The body text of the message.
 [userUrl] | String | An arbitrary URL associated with the message.
 [etc]     | String | An optional payload.  Can be used by clients to extend the message with custom fields.  Probably JSON encoded.
 updatedAt | Timestamp (ms) | The timestamp of the update.  If the message already exists, then the server will only accept updates that have an `updatedAt` that is larger than its current `updatedAt` value.
-sig       | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig       | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### Returns
 
@@ -574,7 +574,7 @@ interchangeUrl | URL | The URL of the user's interchange server.
 pubkey         | String | The user's public key.
 about          | String | Details about the user.  Probably a string in JSON format.
 updatedAt      | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig            | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig            | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### Returns
 
@@ -627,7 +627,7 @@ nick       | String | The nickname of the user.  Generally, this should be ident
 statusText | String | The user-provided status text.
 isOnline   | bool | Whether the user can be considered "online".
 updatedAt  | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig        | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig        | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### Returns
 
@@ -680,7 +680,7 @@ blocker        | String | The nickname of the user blocking.
 blockee        | String | The nickname of the user blocked.
 blocked        | bool | Whether to block or unblock the user.
 [updatedAt]    | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig            | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2Authentication-and-encryption)).
+sig            | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2-authentication-and-encryption)).
 
 #### Returns
 
@@ -755,8 +755,8 @@ updatedAt      | Timestamp (ms) | The timestamp of the update.
 hubCreatedAt   | Timestamp (ms) | The timestamp when this profile was first received by the Hub.
 hubSyncedAt    | Timestamp (ms) | The timestamp that the profile was received by the Hub.
 syncedAt       | Timestamp (ms) | The timestamp that the profile was received by the interchange server.
-sig            | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
-hubSig         | String | The Base64 encoded signature from the Hub (see [Authentication](#2Authentication-and-encryption)).
+sig            | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
+hubSig         | String | The Base64 encoded signature from the Hub (see [Authentication](#2-authentication-and-encryption)).
 
 #### `sig` fields
 
@@ -796,7 +796,7 @@ nick       | String | The nickname of the user.
 statusText | String | The user-provided status text.
 isOnline   | bool | Whether the user is online.
 updatedAt  | Timestamp (ms) | The timestamp of the update.
-sig        | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig        | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### `sig` fields
 
@@ -826,7 +826,7 @@ etc         | String | An optional message payload.  Can be used by clients to e
 createdAt   | Timestamp (ms) | The timestamp of when the message was created.
 updatedAt   | Timestamp (ms) | The timestamp of when the message was last updated (set to `createdAt` if the message was never updated).  Does not include the time when messages were posted to the message.
 [deletedAt] | Timestamp (ms) | The timestamp of when the message was deleted.  Unset if the message has not been deleted.
-sig         | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig         | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### `sig` fields
 
@@ -854,7 +854,7 @@ subscriptionUrl | URL | The URL of the subscription.
 nick            | String | The nickname of the subscriber.
 weight          | int | The weight of the subscription.
 updatedAt       | Timestamp (ms) | The (client-provided) timestamp of the command.
-sig             | String | The Base64 encoded signature (see [Authentication](#2Authentication-and-encryption)).
+sig             | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
 
 #### `sig` fields
 
@@ -876,7 +876,7 @@ blockee            | String | The nickname of the user blocked.
 blocked            | bool | Whether the user is blocked.
 updatedAt          | Timestamp (ms) | The timestamp of the block.
 [intermediateNick] | String | If the block has been propagated via an intermediate user, then this is their nickname.  If this field is set, then the block should be propagated to `intermedateNick`'s followers.  If this field is not set, then the block should be propagated to `blocker`'s followers.
-sig                | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2Authentication-and-encryption)).
+sig                | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2-authentication-and-encryption)).
 
 #### `sig` fields
 
