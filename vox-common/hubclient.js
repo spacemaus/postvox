@@ -16,6 +16,9 @@ var MAX_USER_PROFILE_CACHE_MS = 30 * 60 * 60000; // 30 minutes
  * A client interface for the Hub.  Caches user profile information in the local
  * db.
  *
+ * @param {URL} hubUrl The URL of the Hub.  Can be any server that implements
+ *     the Hub protocol, though its encryption key must match that
+ *     authentication.js.
  * @param {Object} db A DB stub.
  * @param {function(String, Number?)} db.GetUserProfile
  * @param {function(Object)} db.SetUserProfile
