@@ -49,14 +49,14 @@ Flags
 
 Name | Example | Description
 :----|:--------|:-----------
---dbDir | /home/user/vox-server-db | The on-disk location of the server's database.  This is where message streams and metadata will be stored.
---port | 9001 | The port to bind to.
---metricsPort | 9002 | The port to bind the internal metrics server to.
---hubUrl | http://hub.postvox.net | The URL of the Hub.  The Hub is like DNS, but for users' nicknames.  If you point to a different Hub, you also need to update the expected public key in vox-common/authentication.js.
+`--dbDir` | /home/user/vox-server-db | The on-disk location of the server's database.  This is where message streams and metadata will be stored.
+`--port` | 9001 | The port to bind to.
+`--metricsPort` | 9002 | The port to bind the internal metrics server to.
+`--hubUrl` | http://hub.postvox.net | The URL of the Hub.  The Hub is like DNS, but for users' nicknames.  If you point to a different Hub, you also need to update the expected public key in `vox-common/authentication.js`.
 
 
 TODO
 =======
 
-[] Implement the rest of the protocol.
-[] Make it easy to run fakehub in development mode.
+- [] Implement the rest of the protocol.
+- [] Make it easy to run fakehub in development mode.

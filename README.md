@@ -30,7 +30,7 @@ When you run `vox init`, it'll create an **encryption key** for you, and store
 it in ~/.voxconfig.json.  Any data you publish will be signed with this key.
 
 Second, you need a host for your data.  There's only one right now, unless you
-[run your own server](server/README.md).  The default host is at
+[run your own server](vox-server/README.md).  The default host is at
 `http://vanilla.postvox.net`.
 
 Thirdly, run `vox help` to see help for non-interactive commands, or run `vox`

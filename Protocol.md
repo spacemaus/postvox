@@ -264,7 +264,8 @@ metadata.
 - [Block a user](#block-a-user)
 - [List a source's blocks](#list-a-sources-blocks)
 
-- [Stanzas](#5-stanzas)
+Stanzas:
+
     - [UserProfile stanza](#userprofile-stanza)
     - [UserStatus stanza](#userstatus-stanza)
     - [Message stanza](#message-stanza)
