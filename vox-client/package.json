@@ -19,6 +19,8 @@
     "minimist": "^1.1.0",
     "mkdirp": "^0.5.0",
     "moment": "^2.9.0",
+    "sequelize": "^2.0.0-rc8",
+    "sqlite3": "^3.0.4",
     "ursa": "^0.8.1",
     "vox-common": "^0.0.1"
   },
