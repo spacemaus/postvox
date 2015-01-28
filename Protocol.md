@@ -169,8 +169,7 @@ user, but whose signatures do not match the key on file with the Hub.
 
 
 Signing stanzas
-–-----------------
-
+------------------
 Every user-generated stanza (messages, subscriptions, status updates) is signed
 with the user's corresponding private key.  Interchange servers and clients must
 verify that the stanzas' signatures match the key on record at the Hub, as of
