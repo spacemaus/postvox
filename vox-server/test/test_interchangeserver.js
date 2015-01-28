@@ -283,7 +283,7 @@ describe('interchangeserver', function() {
             PostMessage('a', { author: 'a', text: 'fourth', updatedAt: NOW + 2 })
         ])
         .then(function() {
-          return ListMessages('a', messageUrl + '/replies');
+          return ListMessages('a', messageUrl + '/replyTo');
         })
         .then(function(messages) {
           assert.equal(messages.length, 2);
