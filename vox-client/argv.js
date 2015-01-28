@@ -8,12 +8,6 @@ var urlparse = require('url')
 
 module.exports = exports = commandLineArgs;
 
-/**
- * The Hub is like the root DNS server for Postvox nicknames.  Setting --hubUrl
- * lets you point to a different Hub authority.
- */
-exports.hubUrl = urlparse.parse(commandLineArgs.hubUrl || 'http://localhost:9090');
-
 var homeDir = process.env.HOME || process.env.HOMEPATH || process.env.HOMEDIR || process.cwd();
 
 /**
