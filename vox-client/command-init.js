@@ -30,7 +30,7 @@ function InitNewConfig(context) {
       colors.bold(argv.configFile));
   term.log(path.resolve(argv.configFile));
   term.log('Upon completion, your new identity will be registered at the Hub.');
-  term.log('-----');
+  term.log('---------------------------------------');
   term.log('1. What %s would you like to register?', colors.bold('nickname'));
   term.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
   var config = {};
@@ -40,7 +40,7 @@ function InitNewConfig(context) {
       .then(function(nickname) {
         config.nick = nickname;
         term.log('   Checking for availability...');
-        return context.hubClient.GetUserProfile(nickname)
+        return context.hubClient.GetUserProfileFromHub(nickname)
       })
       .then(
         function(entity) {
@@ -51,7 +51,9 @@ function InitNewConfig(context) {
         function(err) {
           if (err.statusCode == 404) {
             term.log('   It\'s available!');
+            term.log('---------------------------------------');
             term.log('   Hi, %s!', colors.bold(config.nick));
+            term.log('---------------------------------------');
             return config.nick;
           } else if (err.statusCode == 400) {
             term.log(colors.red('   Whoops, looks like "%s" is not a valid nickname.'), config.nick);
@@ -71,28 +73,29 @@ function InitNewConfig(context) {
       config.pubkey = privateKey.toPublicPem('utf8')
       config.privkey = privateKey.toPrivatePem('utf8')
       term.log('   Your private key has been generated.  It is stored in %s',
-          argv.configFile);
+          colors.bold(argv.configFile));
       term.log(colors.bold('   This is the key to your identity, so don\'t lose it!'));
-      term.log('-----');
+      term.log('---------------------------------------');
+      term.log('');
       term.log('2. Next, where would you like to store your online data?');
       term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
       term.log('   This should be a URL like %s',
           colors.bold('"http://example.com"'));
-      term.log('   (Press ENTER to use the default server)');
-      return term.question('Home server [' + argv.defaultInterchangeUrl + ']> ')
+      term.log('   (Press ENTER to use the default server : %s)', colors.dim(argv.defaultInterchangeUrl));
+      return term.question('Home server> ')
         .then(function(interchangeUrl) {
           config.interchangeUrl = interchangeUrl.trim();
           if (!config.interchangeUrl) {
             config.interchangeUrl = argv.defaultInterchangeUrl.trim();
           }
           config.interchangeUrl = MakeCanonicalInterchangeUrl(config.interchangeUrl);
-          term.log('-----');
+          term.log('---------------------------------------');
           term.log('3. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
           return term.question('About ' + config.nick + '> ');
         })
         .then(function(aboutText) {
           config.about = { text: aboutText };
-          term.log('-----');
+          term.log('---------------------------------------');
           term.log('Saving identity to disk...');
           configs.update(argv.configFile, config);
           term.log('Sending identity to the Hub...');
@@ -129,28 +132,30 @@ function UpdateExistingConfig(context) {
   term.log('Ok, we\'re updating your Vox config at %s%s',
       colors.dim('--configFile='),
       colors.bold(argv.configFile));
+  term.log('---------------------------------------');
   term.log('Nickname: %s', colors.bold(context.nick));
+  term.log('---------------------------------------');
   term.log('1. Where would you like to store your online data?');
   term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
   term.log('   This should be a URL like %s',
       colors.bold('"http://example.com"'));
-  term.log('   (Press ENTER to use the existing value)');
+  term.log('   (Press ENTER to keep the existing value)');
   return term.question('Home server [' + context.config.interchangeUrl + ']> ')
     .then(function(interchangeUrl) {
       var newInterchangeUrl = interchangeUrl.trim();
       if (newInterchangeUrl) {
         config.interchangeUrl = MakeCanonicalInterchangeUrl(newInterchangeUrl);
       }
-      term.log('-----');
+      term.log('---------------------------------------');
       term.log('2. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
-      term.log('   (Press ENTER to use the existing value)');
+      term.log('   (Press ENTER to keep the existing value)');
       return term.question('About ' + config.nick + '> ');
     })
     .then(function(aboutText) {
       if (aboutText) {
         config.about = { text: aboutText };
       }
-      term.log('-----');
+      term.log('---------------------------------------');
       term.log('Saving identity to disk...');
       configs.update(argv.configFile, config);
       term.log('Sending identity to the Hub...');
