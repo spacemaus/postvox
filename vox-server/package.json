@@ -8,7 +8,7 @@
     "vox-server": "vox-server.js"
   },
   "scripts": {
-    "vox-server": "node vox-server.js",
+    "vox-server": "NODE_ENV=development node vox-server.js",
     "test": "mocha --reporter dot --slow 200ms --bail"
   },
   "dependencies": {

@@ -3,8 +3,10 @@
       "name": "vox-server",
       "script": "/home/vox-server/deploy/live/vox-server.js",
       "args": [
-          "--hubUrl=http://hub.postvox.net",
-          "--dbDir=/home/vox-server/database/interchange"
+          "--dbDir=/home/vox-server/database/interchange",
+          "--port=9001",
+          "--metricsPort=9002",
+          "--hubUrl=http://hub.postvox.net"
       ],
       "cwd": "/home/vox-server",
       "env": {
