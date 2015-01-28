@@ -1,0 +1,15 @@
+{
+  "apps": [{
+      "name": "vox-server",
+      "script": "/home/vox-server/deploy/live/vox-server.js",
+      "args": [
+          "--hubUrl=http://hub.postvox.net",
+          "--dbDir=/home/vox-server/database/interchange"
+      ],
+      "cwd": "/home/vox-server",
+      "env": {
+          "DEBUG": "vox:*",
+          "NODE_ENV": "production"
+      }
+  }]
+}

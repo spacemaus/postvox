@@ -1,0 +1,36 @@
+{
+  "name": "vox-server",
+  "version": "0.0.1",
+  "description": "A server for the Postvox network",
+  "author": "spacemaus@spacemaus.com",
+  "main": "interchangeserver.js",
+  "bin": {
+    "vox-server": "vox-server.js"
+  },
+  "scripts": {
+    "vox-server": "node vox-server.js",
+    "test": "mocha --reporter dot --slow 200ms --bail"
+  },
+  "dependencies": {
+    "bluebird": "^2.5.3",
+    "body-parser": "^1.10.0",
+    "colors": "^1.0.3",
+    "debug": "^2.1.0",
+    "express": "^4.10.4",
+    "level": "^0.18.0",
+    "lru-cache": "^2.5.0",
+    "minimist": "^1.1.0",
+    "mkdirp": "^0.5.0",
+    "node-uuid": "^1.4.2",
+    "sequelize": "^2.0.0-rc4",
+    "socket.io": "^1.2.1",
+    "sqlite3": "^3.0.4",
+    "vox-common": "^0.0.1"
+  },
+  "devDependencies": {
+    "mocha": "^2.1.0",
+    "temp": "^0.8.1",
+    "ursa": "^0.8.1"
+  },
+  "license": "MIT"
+}
