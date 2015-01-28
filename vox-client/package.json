@@ -22,6 +22,10 @@
     "ursa": "^0.8.1",
     "vox-common": "^0.0.1"
   },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/spacemaus/postvox.git"
+  },
   "preferGlobal": true,
   "license": "MIT"
 }

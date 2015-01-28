@@ -32,5 +32,9 @@
     "temp": "^0.8.1",
     "ursa": "^0.8.1"
   },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/spacemaus/postvox.git"
+  },
   "license": "MIT"
 }
