@@ -9,7 +9,7 @@ var voxcommon = require('vox-common');
 
 
 exports = module.exports = function(context) {
-  if (context.nick) {
+  if (context.privkey) {
     return UpdateExistingConfig(context);
   }
   return InitNewConfig(context);
@@ -31,35 +31,58 @@ function InitNewConfig(context) {
   term.log(path.resolve(argv.configFile));
   term.log('Upon completion, your new identity will be registered at the Hub.');
   term.log('---------------------------------------');
-  term.log('1. What %s would you like to register?', colors.bold('nickname'));
-  term.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
+
   var config = {};
 
   function AskForNickname() {
-    return term.question('Nickname> ')
-      .then(function(nickname) {
-        config.nick = nickname;
-        term.log('   Checking for availability...');
-        return context.hubClient.GetUserProfileFromHub(nickname)
-      })
+    if (argv.nick) {
+      term.log('   (Using nickname from --nick flag)');
+      return CheckForNickname(argv.nick)
+        .then(function(nick) {
+          if (!nick) {
+            term.log(colors.red('Please try another value for --nick'));
+            process.exit(1);
+          } else {
+            term.log('---------------------------------------');
+            term.log('   Hi, %s!', colors.bold(nick));
+            term.log('---------------------------------------');
+            return nick;
+          }
+        });
+    } else {
+      term.log('1. What %s would you like to register?', colors.bold('nickname'));
+      term.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
+      return term.question('Nickname> ')
+        .then(CheckForNickname)
+        .then(function(nick) {
+          if (!nick) {
+            term.log('   Let\'s try again...');
+            return AskForNickname();
+          } else {
+            term.log('---------------------------------------');
+            term.log('   Hi, %s!', colors.bold(nick));
+            term.log('---------------------------------------');
+            return nick;
+          }
+        });
+    }
+  }
+
+  function CheckForNickname(nick) {
+    term.log('   Checking for availability...');
+    return context.hubClient.GetUserProfileFromHub(nick)
       .then(
         function(entity) {
-          term.log('   Whoops, looks like that nickname has already been registered.');
-          term.log('   Let\'s try again...');
-          return AskForNickname();
+          term.log(colors.red('   Whoops, looks like that nickname has already been registered.'));
+          return null;
         },
         function(err) {
           if (err.statusCode == 404) {
             term.log('   It\'s available!');
-            term.log('---------------------------------------');
-            term.log('   Hi, %s!', colors.bold(config.nick));
-            term.log('---------------------------------------');
-            return config.nick;
+            return nick;
           } else if (err.statusCode == 400) {
-            term.log(colors.red('   Whoops, looks like "%s" is not a valid nickname.'), config.nick);
-            term.log('   Let\'s try again...');
-            term.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
-            return AskForNickname();
+            term.log(colors.red('   Whoops, looks like "%s" is not a valid nickname.'), nick);
+            return null;
           } else {
             term.log(colors.red('Some kind of problem:'), err, err.stack);
             process.exit(1);
@@ -68,10 +91,15 @@ function InitNewConfig(context) {
   }
 
   return AskForNickname()
+    .then(function(nick) {
+      config.nick = nick;
+      return context.ReopenDatabaseForConfig(config);
+    })
     .then(function() {
       privateKey = ursa.generatePrivateKey();
-      config.pubkey = privateKey.toPublicPem('utf8')
-      config.privkey = privateKey.toPrivatePem('utf8')
+      config.pubkey = privateKey.toPublicPem('utf8');
+      config.privkey = privateKey.toPrivatePem('utf8');
+      context.SetPrivkey(config.privkey);
       term.log('   Your private key has been generated.  It is stored in %s',
           colors.bold(argv.configFile));
       term.log(colors.bold('   This is the key to your identity, so don\'t lose it!'));
@@ -79,9 +107,9 @@ function InitNewConfig(context) {
       term.log('');
       term.log('2. Next, where would you like to store your online data?');
       term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
-      term.log('   This should be a URL like %s',
-          colors.bold('"http://example.com"'));
+      term.log('   This should be a URL like %s', colors.bold('"http://example.com"'));
       term.log('   (Press ENTER to use the default server : %s)', colors.dim(argv.defaultInterchangeUrl));
+
       return term.question('Home server> ')
         .then(function(interchangeUrl) {
           config.interchangeUrl = interchangeUrl.trim();
@@ -139,8 +167,8 @@ function UpdateExistingConfig(context) {
   term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
   term.log('   This should be a URL like %s',
       colors.bold('"http://example.com"'));
-  term.log('   (Press ENTER to keep the existing value)');
-  return term.question('Home server [' + context.config.interchangeUrl + ']> ')
+  term.log('   (Press ENTER to keep the existing value: %s)', colors.dim(context.config.interchangeUrl));
+  return term.question('Home server> ')
     .then(function(interchangeUrl) {
       var newInterchangeUrl = interchangeUrl.trim();
       if (newInterchangeUrl) {
@@ -148,7 +176,8 @@ function UpdateExistingConfig(context) {
       }
       term.log('---------------------------------------');
       term.log('2. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
-      term.log('   (Press ENTER to keep the existing value)');
+      var aboutText = context.config.about ? context.config.about.text : '';
+      term.log('   (Press ENTER to keep the existing value: %s)', colors.dim(aboutText));
       return term.question('About ' + config.nick + '> ');
     })
     .then(function(aboutText) {

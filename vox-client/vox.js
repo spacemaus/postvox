@@ -58,43 +58,12 @@ function Main() {
   //
   // The configSet stores a dictionary of such configs.
   var config = configs.getUserConfig(argv.configFile, argv.nick);
-  _Main(config);
-}
-
-
-/**
- * Ensures that dbFile is accessible and that we have the lockfile.
- */
-function _Main(config) {
-  var dbConfig = {
-      dbFile: PrepareDbFile(argv.dbDir, config.nick)
-  }
-
-  var lockfileName = dbConfig.dbFile + '.vox-lock';
-
-  return lockfile.lockAsync(lockfileName, { wait: 2000 })
-    .catch(function(err) {
-      console.error('Database is locked/in use by another vox command. %s', lockfileName, err);
-      process.exit(1);
-    })
-    .then(function() {
-      return _RunCommand(config, dbConfig)
-        .finally(function() {
-          lockfile.unlockSync(lockfileName);
-        })
-        .then(function(result) {
-          if (!result || !result.retryWithConfig) {
-            process.exit(0);
-          }
-          debug('Restarting with new config');
-          return _Main(result.retryWithConfig);
-        });
-    });
+  _RunCommand(config);
 }
 
 
 /** Runs the actual command. */
-function _RunCommand(config, dbConfig) {
+function _RunCommand(config) {
   // The command that the user entered on the command line:
   var cmdName = argv._[0] || 'interactive';
   if (cmdName[0] == '/') {
@@ -110,25 +79,16 @@ function _RunCommand(config, dbConfig) {
     process.exit(1);
   }
 
-  var context = RootContext(argv, term, config);
+  var context = RootContext(argv, term);
 
   // Open our local database and initialize our client stubs.
-  return clientdb.OpenDb(dbConfig)
-    .then(function(db) {
-      context.db = db;
-      context.hubClient = hubClient.HubClient(argv.hubUrl, db);
-      return interchangeClient.ConnectionManager(
-          context.hubClient,
-          PROTOCOL_VERSION,
-          AGENT_STRING);
-    })
-    .then(function(connectionManager) {
-      context.connectionManager = connectionManager;
+  return context.OpenDatabaseForConfig(config)
+    .then(function() {
       var args = argv._.slice(1);
 
       // We listen for session updates globally.  This ensures that we save any
-      // new session IDs, and are able to re-establish routes whenever a server
-      // has "forgotten" one of our sessions.
+      // new session IDs, and lets us know when we need to re-establish routes
+      // when a server has "forgotten" one of our sessions.
       context.ListenForSessionUpdates();
 
       // Similarly, we listen for updates to other users' profiles, so we know
@@ -136,21 +96,27 @@ function _RunCommand(config, dbConfig) {
       context.ListenForUserProfileUpdates();
 
       // Now, run the user's command.
-      if (cmdName == 'interactive' && !config.nick) {
+      if (cmdName == 'interactive' && !config.privkey) {
         // If the config is missing or invalid, then run `init` as the first
         // interactive command.
         return COMMANDS['init'](context, [])
-          .then(function(config) {
-            return { retryWithConfig: config };
-          });
+          .then(function() {
+            return handler(context, args);
+          })
       } else {
-        if (!config.nick && cmdName != 'init') {
+        if (!config.privkey && cmdName != 'init') {
           console.error('Config file invalid: %s', argv.configFile);
           console.error('Please run `vox init` before any other command.');
           process.exit(1);
         }
         return handler(context, args);
       }
+    })
+    .finally(function() {
+      context.Close();
+    })
+    .then(function() {
+      process.exit(0);
     })
     .catch(function(err) {
       console.error('Error!', err, err.stack);
@@ -162,19 +128,99 @@ function _RunCommand(config, dbConfig) {
 /**
  * Creates a context object that can be passed to command handlers.
  */
-function RootContext(argv, term, config) {
+function RootContext(argv, term) {
   var self = {
       commands: COMMANDS, // Overwritten when interactive
       interactive: false,
       argv: argv,
       term: term,
-      config: config,
-      nick: config.nick,
-      privkey: config.privkey ? ursa.createPrivateKey(config.privkey) : null,
+      config: null,
+      nick: null,
+      privkey: null,
       db: null,
       hubClient: null,
       connectionManager: null,
+      lockfileName: null,
+      hasLock: false
   };
+
+  self.OpenDatabaseForConfig = function(config) {
+    if (self.db) {
+      throw new Error('A database is already open!');
+    }
+
+    self.config = config;
+    self.nick = config.nick;
+    self.SetPrivkey(config.privkey);
+
+    var dbConfig = {
+        dbFile: PrepareDbFile(argv.dbDir, self.nick)
+    }
+
+    self.lockfileName = dbConfig.dbFile + '.vox-lock';
+
+    return TakeDatabaseLock()
+      .then(function() {
+        return clientdb.OpenDb(dbConfig);
+      })
+      .then(function(db) {
+        self.db = db;
+        self.hubClient = hubClient.HubClient(argv.hubUrl, db);
+        self.connectionManager = interchangeClient.ConnectionManager(
+            self.hubClient,
+            PROTOCOL_VERSION,
+            AGENT_STRING);
+      });
+  }
+
+  self.SetPrivkey = function(privkey) {
+    self.privkey = privkey ? ursa.createPrivateKey(privkey) : null
+  }
+
+  self.ReopenDatabaseForConfig = function(config) {
+    if (self.db) {
+      self.CloseDatabase();
+    }
+    return self.OpenDatabaseForConfig(config);
+  }
+
+  self.CloseDatabase = function() {
+    if (self.db) {
+      self.db.Close();
+      self.db = null;
+      self.hubClient = null;
+      self.connectionManager = null;
+    }
+    if (self.hasLock) {
+      ReleaseDatabaseLock();
+    }
+  }
+
+  self.Close = function() {
+    self.CloseDatabase();
+  }
+
+  function TakeDatabaseLock() {
+    if (!self.lockfileName) {
+      throw new Error('Lockfile name not set!');
+    }
+    return lockfile.lockAsync(self.lockfileName, { wait: 2000 })
+      .then(function() {
+        self.hasLock = true;
+      })
+      .catch(function(err) {
+        console.error('Database is locked/in use by another vox command. %s', self.lockfileName, err);
+        process.exit(1);
+      });
+  }
+
+  function ReleaseDatabaseLock() {
+    if (!self.hasLock) {
+      return;
+    }
+    lockfile.unlockSync(self.lockfileName);
+    self.hasLock = false;
+  }
 
   /**
    * Sends a /routes request to the interchange server registered for `source`.

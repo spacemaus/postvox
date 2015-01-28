@@ -213,6 +213,14 @@ exports.OpenDb = function(config) {
     ]);
   }
 
+  //////////
+  // Misc //
+  //////////
+
+  self.Close = function() {
+    db.close();
+  }
+
   return db.sync()
     .then(function() {
       return P.all([

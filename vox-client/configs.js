@@ -13,12 +13,12 @@ exports.getUserConfig = function(filename, nick) {
     configSet = exports.parse(filename);
   } catch(err) {
     console.error('No config found at %s', filename);
-    return {};
+    return { nick: nick };
   }
 
   var profiles = configSet['profiles'];
   if (!profiles) {
-    return {};
+    return { nick: nick };
   }
 
   if (!nick) {
@@ -33,7 +33,7 @@ exports.getUserConfig = function(filename, nick) {
     }
   }
 
-  return config || {};
+  return config || { nick: nick };
 }
 
 
