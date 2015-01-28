@@ -56,7 +56,7 @@ exports.HubClient = function(hubUrl, db) {
    */
   self.RegisterUserProfile = function(userProfile, privkey) {
     debug('Registering ' + userProfile.nick + ' with home ' + userProfile.interchangeUrl +
-        ' with the Hub at (' + hubUrl + ')...');
+        ' with the Hub at (' + urlparse.format(hubUrl) + ')...');
 
     if (!userProfile.updatedAt) {
       userProfile.updatedAt = new Date().getTime();
