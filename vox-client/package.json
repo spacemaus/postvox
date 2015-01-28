@@ -7,7 +7,7 @@
     "vox": "vox.js"
   },
   "scripts": {
-    "vox": "node vox.js",
+    "vox": "NODE_ENV=development node vox.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
