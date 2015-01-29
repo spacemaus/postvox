@@ -286,6 +286,46 @@ exports.OpenDb = function(config) {
   //
   // Unlike the other objects, Messages are stored in LevelDB.
 
+  /*
+   * Message keys/indexes
+   *
+   * Since LevelDB is essentially just a sorted hashtable, we need to implement
+   * our own indexing for fast scans.
+   *
+   * Each message can write to the following keys in LevelDB.  ('/' stands for
+   * the path separator '\x00').
+   *
+   * - Message:
+   *     <messageUrl>
+   *
+   * - By source:
+   *     s/<source>/-/<syncedAt DESC>/<messageUrl>
+   *
+   * - By author:
+   *     s/<source>/a/<author>/<syncedAt DESC>/<messageUrl>
+   *
+   * - By thread:
+   *     s/<source>/t/<thread>/<syncedAt DESC>/<messageUrl>
+   *
+   * - By replyTo:
+   *     s/<source>/rt/<replyTo>/<syncedAt DESC>/<messageUrl>
+   *
+   * To scan for all the messages from a source/author, we just set the start
+   * and end keys to:
+   *
+   *     start = s/spacemaus/a/landcatt/
+   *     end = s/spacemaus/a/landcatt/\xff
+   *
+   * To scan for messages between `syncedBefore` and `syncedAfter`, we set the
+   * start and end keys to:
+   *
+   *     start = s/spacemaus/a/landcatt/<syncedBefore DESC>/
+   *     end = s/spacemaus/a/landcatt/<syncedAfter DESC>/\xff
+   *
+   * Note that in all cases, the end key's terminator '\xff' comes _after_ the
+   * separator '\x00'.
+   */
+
   self.InsertMessage = function(columns) {
     EnsureTimestamps(columns);
     var stopTimer = eyes.start('interchangedb.InsertMessage');
@@ -346,15 +386,16 @@ exports.OpenDb = function(config) {
     } else if (options.replyTo) {
       prefix += 'rt\x00' + options.replyTo;
     } else {
-      prefix += '-'
+      prefix += '-';
     }
-    var startKey = prefix + '\x00';
+    prefix += '\x00';
+    var startKey = prefix;
     if (options.syncedBefore) {
       startKey += ToDesc(options.syncedBefore) + '\x00';
     }
     var endKey;
     if (options.syncedAfter) {
-      endKey = prefix + '\x00' + ToDesc(options.syncedAfter) + '\xff';
+      endKey = prefix + ToDesc(options.syncedAfter) + '\x00\xff';
     } else {
       endKey = prefix + '\xff';
     }
