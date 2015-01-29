@@ -22,6 +22,43 @@ The protocol is meant to be:
 - Secure.  Encryption should be built in.
 
 
+Table of contents
+--------------------
+
+- [0. Overview](#0-overview)
+- [1. Interchange server protocol](#1-interchange-server-protocol)
+    - [Synchronization](#synchronization)
+    - [Timestamps](#timestamps)
+    - [Input limits, validation, normalization](#input-limits-validation-normalization)
+- [2. Authentication and encryption](#2-authentication-and-encryption)
+    - [Public and private encryption keys](#public-and-private-encryption-keys)
+    - [Signing stanzas](#signing-stanzas)
+- [3. Accessing interchange endpoints](#3-accessing-interchange-endpoints)
+- [4. Interchange endpoints](#4-interchange-endpoints)
+    - [Begin or resume a session](#begin-or-resume-a-session)
+    - [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
+    - [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
+    - [Create or update a message](#create-or-update-a-message)
+    - [List existing messages](#list-existing-messages)
+    - [List replies to a specific message](#list-replies-to-a-specific-message)
+    - [List replies to a message thread](#list-replies-to-a-message-thread)
+    - [Get the details of an existing message](#get-the-details-of-an-existing-message)
+    - [List the subscribers to a given URL](#list-the-subscribers-to-a-given-url)
+    - [List the subscriptions of a user](#list-the-subscriptions-of-a-user)
+    - [Update a user's profile details](#update-a-users-profile-details)
+    - [Read a user's profile details](#read-a-users-profile-details)
+    - [Update a user's status](#update-a-users-status)
+    - [Read a user's status](#read-a-users-status)
+    - [Block a user](#block-a-user)
+    - [List a source's blocks](#list-a-sources-blocks)
+- [5. Stanzas](#5-stanzas)
+    - [UserProfile stanza](#userprofile-stanza)
+    - [UserStatus stanza](#userstatus-stanza)
+    - [Message stanza](#message-stanza)
+    - [Subscription stanza](#subscription-stanza)
+    - [Block stanza](#block-stanza)
+
+
 0. Overview
 ==============
 The Postvox network is a network of databases and end-user clients. Each
