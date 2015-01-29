@@ -4,7 +4,7 @@ var commandGetstatus = require('./command-getstatus');
 var commandHelp = require('./command-help');
 var commandPost = require('./command-post');
 var commandRead = require('./command-read');
-var commandStatus = require('./command-status');
+var commandSetstatus = require('./command-setstatus');
 var debug = require('debug')('vox:command:interactive');
 var errors = require('vox-common/errors');
 var moment = require('moment');
@@ -128,11 +128,11 @@ var INTERACTIVE_COMMANDS = {
       });
     });
   },
-  status: function(context, args) {
+  me: function(context, args) {
     var statusText = args.join(' ');
-    return commandStatus.SetStatusText(context, statusText);
+    return commandSetstatus.SetStatusText(context, statusText);
   },
-  getstatus: function(context, args) {
+  status: function(context, args) {
     if (!args[0]) {
       return commandGetstatus.GetAllStatuses(context)
         .then(function(userStatuses) {
@@ -156,10 +156,10 @@ var INTERACTIVE_COMMANDS = {
 
 INTERACTIVE_COMMANDS.read.help = commandRead.help;
 INTERACTIVE_COMMANDS.read.examples = commandRead.examples;
-INTERACTIVE_COMMANDS.status.help = commandStatus.help;
-INTERACTIVE_COMMANDS.status.examples = commandStatus.examples;
-INTERACTIVE_COMMANDS.getstatus.help = commandGetstatus.help;
-INTERACTIVE_COMMANDS.getstatus.examples = commandGetstatus.examples;
+INTERACTIVE_COMMANDS.me.help = commandSetstatus.help;
+INTERACTIVE_COMMANDS.me.examples = commandSetstatus.examples;
+INTERACTIVE_COMMANDS.status.help = commandGetstatus.help;
+INTERACTIVE_COMMANDS.status.examples = commandGetstatus.examples;
 INTERACTIVE_COMMANDS.help.help = commandHelp.help;
 INTERACTIVE_COMMANDS.help.examples = commandHelp.examples;
 

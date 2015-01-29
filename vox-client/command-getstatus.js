@@ -18,7 +18,8 @@ exports = module.exports = function(context, args) {
 
 exports.help = 'Gets the status of a single user, or of all the users you are following.';
 exports.examples = [
-    '/getstatus spacemaus'
+    '/status spacemaus',
+    '/status'
 ];
 
 

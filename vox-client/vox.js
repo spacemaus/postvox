@@ -441,8 +441,8 @@ var COMMANDS = {
   read: require('./command-read'),
   tail: require('./command-tail'),
   interactive: require('./command-interactive'),
-  status: require('./command-status'),
-  getstatus: require('./command-getstatus'),
+  me: require('./command-setstatus'),
+  status: require('./command-getstatus'),
 }
 
 
