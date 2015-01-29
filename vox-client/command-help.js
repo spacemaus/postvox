@@ -7,7 +7,7 @@ exports = module.exports = function(context, args) {
     PrintCommandHelp(context, args[0]);
   } else {
     if (!context.interactive) {
-      var log = context.term.log;
+      var log = context.view.log;
       log('This is a bare-bones Postvox command-line client.');
       log('It illustrates how a single-user Postvox client may be implemented.');
       log('');
@@ -55,37 +55,37 @@ exports.examples = [
 
 
 function PrintCommandHelp(context, cmdName) {
-  var term = context.term;
+  var view = context.view;
   var cmd = context.commands[cmdName];
   if (!cmd) {
-    term.log(colors.red('No such command: %s'), cmdName);
+    view.log(colors.red('No such command: %s'), cmdName);
     return;
   }
   var printName = context.interactive ? '/' + cmdName : cmdName;
-  term.log(colors.bold(printName));
+  view.log(colors.yellow.bold(printName));
   if (cmd.help) {
-    term.log(cmd.help);
+    view.log(cmd.help);
   }
   if (cmd.examples) {
-    term.log(colors.dim('Examples:'));
+    view.log(colors.dim('Examples:'));
     cmd.examples.forEach(function(example) {
-      term.log('    %s', example);
+      view.log('    %s', example);
     });
   }
   if (cmd.flags) {
-    term.log(colors.dim('Command-line flags:'));
+    view.log(colors.dim('Command-line flags:'));
     for (var name in cmd.flags) {
       var details = cmd.flags[name];
-      term.log('    --%s', name);
-      term.log('      %s', details.help);
+      view.log('    --%s', name);
+      view.log('      %s', details.help);
       if (details.examples) {
         details.examples.forEach(function(example) {
-          term.log(colors.dim('      e.g. --%s=%s'), name, example);
+          view.log(colors.dim('      e.g. --%s=%s'), name, example);
         });
       }
     }
   }
-  term.log('');
+  view.log('');
 }
 
 function PrintAllHelp(context) {

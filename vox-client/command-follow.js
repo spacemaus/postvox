@@ -3,7 +3,7 @@ var P = require('bluebird');
 
 
 exports = module.exports = function(context, args) {
-  var term = context.term;
+  var view = context.view;
   var who = args[0];
   if (!who) {
     console.error('Missing who to follow');
@@ -11,7 +11,7 @@ exports = module.exports = function(context, args) {
   }
   return exports.Follow(context, who, 1)
     .then(function() {
-      term.log('Following %s', who);
+      view.log('Following %s', who);
     });
 }
 

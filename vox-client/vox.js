@@ -31,13 +31,14 @@ var colors = require('colors');
 var configs = require('./configs');
 var debug = require('debug')('vox:vox');
 var errors = require('vox-common/errors');
+var fancyview = require('./fancyview');
 var hubClient = require('vox-common/hubclient');
 var interchangeClient = require('vox-common/interchangeclient');
 var lockfile = require('lockfile');
 var mkdirp = require('mkdirp');
 var P = require('bluebird');
 var path = require('path');
-var term = require('./term');
+var termview = require('./termview');
 var urlparse = require('url');
 var ursa = require('ursa');
 var util = require('util');
@@ -49,7 +50,6 @@ P.promisifyAll(lockfile);
 
 var PROTOCOL_VERSION = '0.0.0';
 var AGENT_STRING = 'Vox.js 0.0.5';
-
 
 
 function Main() {
@@ -79,7 +79,15 @@ function _RunCommand(config) {
     process.exit(1);
   }
 
-  var context = RootContext(argv, term);
+  var view;
+  if (cmdName == 'interactive' && config.privkey && process.stdout.isTTY && process.stdin.isTTY && !argv.noTTY) {
+    view = fancyview.FancyView();
+    view.Attach();
+  } else {
+    view = termview.TermView();
+  }
+
+  var context = RootContext(argv, view);
 
   // Open our local database and initialize our client stubs.
   return context.OpenDatabaseForConfig(config)
@@ -97,11 +105,12 @@ function _RunCommand(config) {
 
       // Now, run the user's command.
       if (cmdName == 'interactive' && !config.privkey) {
-        // If the config is missing or invalid, then run `init` as the first
-        // interactive command.
+        // If the config is missing or invalid, then run `init` instead.
         return COMMANDS['init'](context, [])
           .then(function() {
-            return handler(context, args);
+            view.log('===========================================================')
+            view.log('Identity created!  Run vox again to enter interactive mode.');
+            process.exit(0);
           })
       } else {
         if (!config.privkey && cmdName != 'init') {
@@ -128,12 +137,12 @@ function _RunCommand(config) {
 /**
  * Creates a context object that can be passed to command handlers.
  */
-function RootContext(argv, term) {
+function RootContext(argv, view) {
   var self = {
       commands: COMMANDS, // Overwritten when interactive
       interactive: false,
       argv: argv,
-      term: term,
+      view: view,
       config: null,
       nick: null,
       privkey: null,
@@ -231,6 +240,7 @@ function RootContext(argv, term) {
    * @param {String} source The nickname of the user whose interchange server
    *     we're connecting to.
    * @param {int} weight The weight of the route, 0 or 1.
+   * @returns {Promise<InterchangeConnection>}
    */
   self.SendRouteRequest = function(routeUrl, source, weight) {
     return self.EnsureInterchangeSession(source)
@@ -249,7 +259,8 @@ function RootContext(argv, term) {
               interchangeUrl: conn.interchangeUrl,
               weight: weight
           });
-        });
+        })
+        .return(conn);
       });
   }
 
@@ -345,16 +356,16 @@ function RootContext(argv, term) {
    */
   self.ListenForConnectionStatusEvents = function() {
     self.connectionManager.on('connect', function(info) {
-      term.log(colors.cyan.dim('Connected: ' + info.interchangeUrl));
+      self.view.log(colors.cyan.dim('Connected: ' + info.interchangeUrl));
     });
     self.connectionManager.on('disconnect', function(info) {
-      term.log(colors.red.dim('Disconnected: ' + info.interchangeUrl));
+      self.view.log(colors.red.dim('Disconnected: ' + info.interchangeUrl));
     });
     self.connectionManager.on('error', function(info) {
-      term.log(colors.red.dim('Connection error: ' + info.interchangeUrl));
+      self.view.log(colors.red.dim('Connection error: ' + info.interchangeUrl));
     });
     self.connectionManager.on('reconnect_failed', function(info) {
-      term.log(colors.red.dim('Reconnection failed: ' + info.interchangeUrl));
+      self.view.log(colors.red.dim('Reconnection failed: ' + info.interchangeUrl));
     });
   }
 
@@ -364,6 +375,9 @@ function RootContext(argv, term) {
    *
    * If the connection is already open and has a session, we just return it
    * without sending anything to the server.
+   *
+   * @param {String} source The user's nickname.
+   * @returns {Promise<InterchangeConnection>}
    */
   self.EnsureInterchangeSession = function(source) {
     return self.connectionManager.Connect(source, self.nick)
@@ -381,7 +395,7 @@ function RootContext(argv, term) {
                 source, session ? session.sessionId : undefined);
           })
           .then(function(reply) {
-            term.log(colors.cyan.dim('Server version: %s; %s'), reply.version, reply.agent);
+            self.view.log(colors.cyan.dim('Server version: %s; %s'), reply.version, reply.agent);
           })
           .return(interchangeConnection);
       });
@@ -390,6 +404,8 @@ function RootContext(argv, term) {
   /**
    * Reads saved subscriptions for the user, then calls
    * `EnsureInterchangeSession()` for each.
+   *
+   * @returns {Array<Promise<InterchangeConnection>>}
    */
   self.EnsureSessionsForSubscriptions = function() {
     return self.db.ListSubscriptions(self.nick)
@@ -403,9 +419,9 @@ function RootContext(argv, term) {
 
   self.PrintJson = function(obj_or_name, obj) {
     if (obj !== undefined) {
-      term.log('%s %s', obj_or_name, JSON.stringify(obj));
+      self.view.log('%s %s', obj_or_name, JSON.stringify(obj));
     } else {
-      term.log(JSON.stringify(obj_or_name));
+      self.view.log(JSON.stringify(obj_or_name));
     }
   }
 

@@ -51,6 +51,9 @@ exports.GetAllStatuses = function(context) {
           })
           .then(function(reply) {
             return reply.userStatus;
+          })
+          .catch(function() {
+            return null;
           });
       }))
       .then(function(promises) {

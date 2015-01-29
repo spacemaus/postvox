@@ -2,7 +2,7 @@ var commandFollow = require('./command-follow');
 
 
 exports = module.exports = function(context, args) {
-  var term = context.term;
+  var view = context.view;
   var who = args[0];
   if (!who) {
     console.error('Missing who to unfollow');
@@ -10,7 +10,7 @@ exports = module.exports = function(context, args) {
   }
   return commandFollow.Follow(context, who, 0)
     .then(function() {
-      term.log('Unfollowed %s', who);
+      view.log('Unfollowed %s', who);
     });
 }
 

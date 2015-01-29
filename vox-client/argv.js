@@ -10,7 +10,7 @@ module.exports = exports = commandLineArgs;
 
 exports.nick = commandLineArgs.nick;
 
-var homeDir = process.env.HOME || process.env.HOMEPATH || process.env.HOMEDIR || process.cwd();
+var homeDir = exports.homeDir = process.env.HOME || process.env.HOMEPATH || process.env.HOMEDIR || process.cwd();
 
 /**
  * The Hub is like the root DNS server for Postvox nicknames.  Setting --hubUrl
@@ -45,3 +45,7 @@ if (process.env.NODE_ENV == 'development') {
   exports.dbDir = commandLineArgs.dbDir || path.join(homeDir, '.voxhistory');
   exports.configFile = commandLineArgs.configFile || path.join(homeDir, '.voxconfig.json');
 }
+
+exports.stderrLogsPath = path.join(exports.dbDir, 'vox.stderr');
+
+exports.noTTY = commandLineArgs.noTTY;

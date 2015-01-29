@@ -22,46 +22,46 @@ exports.examples = [
 
 
 function InitNewConfig(context) {
-  var term = context.term;
+  var view = context.view;
   var argv = context.argv;
 
-  term.log('Ok, we\'re initializing your Vox config at %s%s',
+  view.log('Ok, we\'re initializing your Vox config at %s%s',
       colors.dim('--configFile='),
       colors.bold(argv.configFile));
-  term.log(path.resolve(argv.configFile));
-  term.log('Upon completion, your new identity will be registered at the Hub.');
-  term.log('---------------------------------------');
+  view.log(path.resolve(argv.configFile));
+  view.log('Upon completion, your new identity will be registered at the Hub.');
+  view.log('---------------------------------------');
 
   var config = {};
 
   function AskForNickname() {
     if (argv.nick) {
-      term.log('   (Using nickname from --nick flag)');
+      view.log('   (Using nickname from --nick flag)');
       return CheckForNickname(argv.nick)
         .then(function(nick) {
           if (!nick) {
-            term.log(colors.red('Please try another value for --nick'));
+            view.log(colors.red('Please try another value for --nick'));
             process.exit(1);
           } else {
-            term.log('---------------------------------------');
-            term.log('   Hi, %s!', colors.bold(nick));
-            term.log('---------------------------------------');
+            view.log('---------------------------------------');
+            view.log('   Hi, %s!', colors.bold(nick));
+            view.log('---------------------------------------');
             return nick;
           }
         });
     } else {
-      term.log('1. What %s would you like to register?', colors.bold('nickname'));
-      term.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
-      return term.question('Nickname> ')
+      view.log('1. What %s would you like to register?', colors.bold('nickname'));
+      view.log(colors.dim('(Between 6 and 64 characters.  Must contain only letters or numbers.)'));
+      return view.question('Nickname> ')
         .then(CheckForNickname)
         .then(function(nick) {
           if (!nick) {
-            term.log('   Let\'s try again...');
+            view.log('   Let\'s try again...');
             return AskForNickname();
           } else {
-            term.log('---------------------------------------');
-            term.log('   Hi, %s!', colors.bold(nick));
-            term.log('---------------------------------------');
+            view.log('---------------------------------------');
+            view.log('   Hi, %s!', colors.bold(nick));
+            view.log('---------------------------------------');
             return nick;
           }
         });
@@ -69,22 +69,22 @@ function InitNewConfig(context) {
   }
 
   function CheckForNickname(nick) {
-    term.log('   Checking for availability...');
+    view.log('   Checking for availability...');
     return context.hubClient.GetUserProfileFromHub(nick)
       .then(
         function(entity) {
-          term.log(colors.red('   Whoops, looks like that nickname has already been registered.'));
+          view.log(colors.red('   Whoops, looks like that nickname has already been registered.'));
           return null;
         },
         function(err) {
           if (err.statusCode == 404) {
-            term.log('   It\'s available!');
+            view.log('   It\'s available!');
             return nick;
           } else if (err.statusCode == 400) {
-            term.log(colors.red('   Whoops, looks like "%s" is not a valid nickname.'), nick);
+            view.log(colors.red('   Whoops, looks like "%s" is not a valid nickname.'), nick);
             return null;
           } else {
-            term.log(colors.red('Some kind of problem:'), err, err.stack);
+            view.log(colors.red('Some kind of problem:'), err, err.stack);
             process.exit(1);
           }
         });
@@ -100,43 +100,43 @@ function InitNewConfig(context) {
       config.pubkey = privateKey.toPublicPem('utf8');
       config.privkey = privateKey.toPrivatePem('utf8');
       context.SetPrivkey(config.privkey);
-      term.log('   Your private key has been generated.  It is stored in %s',
-          colors.bold(argv.configFile));
-      term.log(colors.bold('   This is the key to your identity, so don\'t lose it!'));
-      term.log('---------------------------------------');
-      term.log('');
-      term.log('2. Next, where would you like to store your online data?');
-      term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
-      term.log('   This should be a URL like %s', colors.bold('"http://example.com"'));
-      term.log('   (Press ENTER to use the default server : %s)', colors.dim(argv.defaultInterchangeUrl));
+      view.log('   Your private key has been generated.  It is stored in:');
+      view.log('   %s', colors.bold(argv.configFile));
+      view.log(colors.bold('   This is the key to your identity, so don\'t lose it!'));
+      view.log('---------------------------------------');
+      view.log('');
+      view.log('2. Next, where would you like to store your online data?');
+      view.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
+      view.log('   This should be a URL like %s', colors.bold('"http://example.com"'));
+      view.log('   (Press ENTER to use the default server : %s)', colors.dim(argv.defaultInterchangeUrl));
 
-      return term.question('Home server> ')
+      return view.question('Home server> ')
         .then(function(interchangeUrl) {
           config.interchangeUrl = interchangeUrl.trim();
           if (!config.interchangeUrl) {
             config.interchangeUrl = argv.defaultInterchangeUrl.trim();
           }
           config.interchangeUrl = MakeCanonicalInterchangeUrl(config.interchangeUrl);
-          term.log('---------------------------------------');
-          term.log('3. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
-          return term.question('About ' + config.nick + '> ');
+          view.log('---------------------------------------');
+          view.log('3. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
+          return view.question('About ' + config.nick + '> ');
         })
         .then(function(aboutText) {
           config.about = { text: aboutText };
-          term.log('---------------------------------------');
-          term.log('Saving identity to disk...');
+          view.log('---------------------------------------');
+          view.log('Saving identity to disk...');
           configs.update(argv.configFile, config);
-          term.log('Sending identity to the Hub...');
+          view.log('Sending identity to the Hub...');
           return context.hubClient.RegisterUserProfile(
               IdentityConfigToUserProfile(config),
               config.privkey);
         })
         .then(function(userProfile) {
-          term.log('OK!  Identity created!');
+          view.log('OK!  Identity created!');
           context.config = config;
           context.nick = config.nick;
           context.privkey = ursa.createPrivateKey(config.privkey);
-          term.log('Sending profile to home server');
+          view.log('Sending profile to home server');
           return SendProfileToInterchange(context, userProfile.interchangeUrl, userProfile);
         })
         .then(function() {
@@ -145,59 +145,59 @@ function InitNewConfig(context) {
         .return(config);
     })
     .catch(function(err) {
-      term.log('Oops! ', err, err.stack);
+      view.log('Oops! ', err, err.stack);
       process.exit(1);
     });
 }
 
 
 function UpdateExistingConfig(context) {
-  var term = context.term;
+  var view = context.view;
   var argv = context.argv;
   var config = context.config;
   var oldInterchangeUrl = config.interchangeUrl;
 
-  term.log('Ok, we\'re updating your Vox config at %s%s',
+  view.log('Ok, we\'re updating your Vox config at %s%s',
       colors.dim('--configFile='),
       colors.bold(argv.configFile));
-  term.log('---------------------------------------');
-  term.log('Nickname: %s', colors.bold(context.nick));
-  term.log('---------------------------------------');
-  term.log('1. Where would you like to store your online data?');
-  term.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
-  term.log('   This should be a URL like %s',
+  view.log('---------------------------------------');
+  view.log('Nickname: %s', colors.bold(context.nick));
+  view.log('---------------------------------------');
+  view.log('1. Where would you like to store your online data?');
+  view.log('   This is where your posts will be stored.  It can be any Postvox-compatible server.  You can change this at any time by running %s again.', colors.bold('vox init'));
+  view.log('   This should be a URL like %s',
       colors.bold('"http://example.com"'));
-  term.log('   (Press ENTER to keep the existing value: %s)', colors.dim(context.config.interchangeUrl));
-  return term.question('Home server> ')
+  view.log('   (Press ENTER to keep the existing value: %s)', colors.dim(context.config.interchangeUrl));
+  return view.question('Home server> ')
     .then(function(interchangeUrl) {
       var newInterchangeUrl = interchangeUrl.trim();
       if (newInterchangeUrl) {
         config.interchangeUrl = MakeCanonicalInterchangeUrl(newInterchangeUrl);
       }
-      term.log('---------------------------------------');
-      term.log('2. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
+      view.log('---------------------------------------');
+      view.log('2. Finally, enter a line about yourself.  This will be seen by anyone who follows you.');
       var aboutText = context.config.about ? context.config.about.text : '';
-      term.log('   (Press ENTER to keep the existing value: %s)', colors.dim(aboutText));
-      return term.question('About ' + config.nick + '> ');
+      view.log('   (Press ENTER to keep the existing value: %s)', colors.dim(aboutText));
+      return view.question('About ' + config.nick + '> ');
     })
     .then(function(aboutText) {
       if (aboutText) {
         config.about = { text: aboutText };
       }
-      term.log('---------------------------------------');
-      term.log('Saving identity to disk...');
+      view.log('---------------------------------------');
+      view.log('Saving identity to disk...');
       configs.update(argv.configFile, config);
-      term.log('Sending identity to the Hub...');
+      view.log('Sending identity to the Hub...');
       return context.hubClient.RegisterUserProfile(
           IdentityConfigToUserProfile(config),
           config.privkey);
     })
     .then(function(userProfile) {
-      term.log('OK!  Identity updated!');
+      view.log('OK!  Identity updated!');
       var p = SendProfileToInterchange(context, userProfile.interchangeUrl, userProfile);
       if (oldInterchangeUrl && oldInterchangeUrl != userProfile.interchangeUrl) {
         p.then(function() {
-          term.log('Notifying followers at %s of your new home server.', oldInterchangeUrl);
+          view.log('Notifying followers at %s of your new home server.', oldInterchangeUrl);
           return SendProfileToInterchange(context, oldInterchangeUrl, userProfile)
               .then(function() {
                 return commandFollow.Follow(context, context.nick, 1);

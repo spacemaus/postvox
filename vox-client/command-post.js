@@ -3,7 +3,7 @@ var P = require('bluebird');
 
 
 exports = module.exports = function(context, args) {
-  var term = context.term;
+  var view = context.view;
   var author = context.nick;
   var text = args.join(' ');
   if (!text.trim()) {

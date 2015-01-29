@@ -4,7 +4,7 @@ var urlparse = require('url');
 
 exports = module.exports = function(context, args) {
   var argv = context.argv;
-  var term = context.term;
+  var view = context.view;
   var nick = context.nick;
   var who = args[0];
   if (!who) {
