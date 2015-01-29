@@ -104,6 +104,7 @@ exports = module.exports = function(context, args) {
 
   function listenForCommand() {
     view.focusInput();
+    view.setInputColor('green');
     view.setPrompt('Command: /');
     view.prompt();
     view.once('input.submit', handleCommand);
@@ -112,6 +113,7 @@ exports = module.exports = function(context, args) {
   function handleCommand(line) {
     view.focusMainBox();
     view.setPrompt('');
+    view.setInputColor('white');
     view.prompt();
     var parts = split2(line);
     var cmdName = parts[0];
@@ -121,6 +123,7 @@ exports = module.exports = function(context, args) {
     } else {
       handler(context, [parts[1]])
         .then(function() { view.prompt() })
+        .finally(view.scrollToEnd)
         .catch(function(err) {
           view.log(colors.red('Error:'), err, err.stack);
         });
@@ -129,6 +132,7 @@ exports = module.exports = function(context, args) {
 
   function listenForMessage() {
     view.focusInput();
+    view.setInputColor('white');
     view.setPrompt('Say> ');
     view.prompt();
     view.once('input.submit', handleMessageCommand);
@@ -142,6 +146,7 @@ exports = module.exports = function(context, args) {
       .then(function(message) {
         messagePrinter.PrintMessage(message, alreadyPrinted);
       })
+      .finally(view.scrollToEnd)
       .catch(function(err) {
         view.log(colors.red('Error:'), err, err.stack);
       });

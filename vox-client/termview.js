@@ -74,6 +74,8 @@ exports.TermView = function() {
 
   self.setModeLine = function() {}
   self.setHelpLine = function() {}
+  self.scrollToEnd = function() {}
+  self.setInputColor = function() {}
   self.render = function() {}
 
   self.setInputLine = function(text) {

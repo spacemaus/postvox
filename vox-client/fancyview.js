@@ -29,8 +29,9 @@ exports.FancyView = function() {
       selectedBg: 'cyan',
       scrollable: true,
       mouse: true,
-      keys: true,
-      vi: true,
+      scrollbar: {
+        bg: 'yellow'
+      }
   });
 
   self.helpBox = blessed.box({
@@ -129,11 +130,48 @@ exports.FancyView = function() {
 
   self.mainContentBox.on('keypress', function(key) {
     self.emit('main.key', key);
+    var cb = self.mainContentBox;
+    if (key == ' ') {
+      var lines = self.mainContentBox.height;
+      cb.scroll(lines);
+      cb.down(lines); // Probably broken with long lines.
+    } else if (key == 'b') {
+      var lines = self.mainContentBox.height;
+      cb.scroll(-lines);
+      cb.up(lines);
+    } else if (key == 'g') {
+      cb.setScrollPerc(0);
+      cb.select(0);
+    } else if (key == 'G') {
+      cb.setScrollPerc(100);
+      cb.select(cb.items.length - 1);
+    }
+    updateScroll();
   });
+
+  self.mainContentBox.key(['down', 'j'], function() {
+    var cb = self.mainContentBox;
+    cb.setScroll(cb.getScroll() + 1);
+    cb.down(1);
+    updateScroll();
+  })
+
+  self.mainContentBox.key(['up', 'k'], function() {
+    var cb = self.mainContentBox;
+    cb.setScroll(cb.getScroll() - 1);
+    cb.up(1);
+    updateScroll();
+  })
+
+  function updateScroll() {
+    self.screen.render();
+    self.scrollFollow = self.mainContentBox.selected == self.mainContentBox.items.length - 1;
+  }
+
+  self.scrollFollow = true;
 
   self.Attach = function() {
     consoleRedirect.redirectConsoleOutput();
-    self.mainContentBox.clearItems();
     render();
   }
 
@@ -148,12 +186,28 @@ exports.FancyView = function() {
     self.screen.render();
   }
 
-  var lines = 0;
   self.log = function(var_args) {
     var val = util.format.apply(null, arguments);
-    self.mainContentBox.setLine(lines++, val);
-    self.mainContentBox.setScrollPerc(100);
+    self.mainContentBox.add(val);
+    if (self.scrollFollow) {
+      self.mainContentBox.select(self.mainContentBox.items.length - 1);
+      self.mainContentBox.setScrollPerc(100);
+    } else {
+      // TODO Only flash when new line is offscreen.
+      self.modeLine.style.bg = 'yellow';
+      self.screen.render();
+      setTimeout(function() {
+        self.modeLine.style.bg = 'white';
+        self.screen.render();
+      }, 300);
+    }
     self.screen.render();
+  }
+
+  self.scrollToEnd = function() {
+    self.mainContentBox.select(self.mainContentBox.items.length - 1);
+    self.mainContentBox.setScrollPerc(100);
+    updateScroll();
   }
 
   self.question = function(question) {
@@ -195,10 +249,9 @@ exports.FancyView = function() {
     self.mainContentBox.focus();
   }
 
-  // TODO doesn't work:
-  // self.setInputColor = function(color) {
-  //   self.inputBox.fg = blessed.colors.convert(color);
-  // }
+  self.setInputColor = function(color) {
+    self.inputBox.style.fg = blessed.colors.convert(color);
+  }
 
   return self;
 }
