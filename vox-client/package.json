@@ -1,6 +1,6 @@
 {
   "name": "vox-client",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A basic terminal client for the Postvox network",
   "author": "spacemaus@spacemaus.com",
   "bin": {
