@@ -23,9 +23,11 @@ var logging = function(v) {
  * Sets the `syncedAt` timestamp, and `updatedAt` and `createdAt`, if they are
  * not set.
  */
-function EnsureTimestamps(columns) {
+function EnsureTimestamps(columns, allowSyncedAt) {
   var now = new Date().getTime();
-  columns.syncedAt = now;
+  if (!allowSyncedAt || !columns.syncedAt) {
+    columns.syncedAt = now;
+  }
   if (!columns.updatedAt) {
     columns.updatedAt = now;
   }
@@ -326,8 +328,8 @@ exports.OpenDb = function(config) {
    * separator '\x00'.
    */
 
-  self.InsertMessage = function(columns) {
-    EnsureTimestamps(columns);
+  self.InsertMessage = function(columns, opt_allowSyncedAt) {
+    EnsureTimestamps(columns, opt_allowSyncedAt);
     var stopTimer = eyes.start('interchangedb.InsertMessage');
     // TODO Prevent overwrites.
     return new P(function(resolve, reject) {
@@ -529,6 +531,15 @@ exports.OpenDb = function(config) {
             'END',
             triggerName, tableName, tableName, MatchPrimaryKeys(model)))
     ]);
+  }
+
+  //////////
+  // Misc //
+  //////////
+
+  self.Close = function() {
+    db.close();
+    leveldb.close();
   }
 
   return db.sync()

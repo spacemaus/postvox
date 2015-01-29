@@ -27,7 +27,7 @@ exports.inc = function() {};
 exports.dec = function() {};
 exports.mark = function() {};
 exports.observe = function() {};
-exports.start = function() {};
+exports.start = function() { return function() {} };
 exports.close = function() {};
 
 
