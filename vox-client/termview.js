@@ -45,6 +45,7 @@ exports.TermView = function() {
    */
   self.question = function(prompt) {
     return new P(function(resolve, reject) {
+      self.focusInput();
       rl.question(prompt, function(reply) {
         resolve(reply);
       });
