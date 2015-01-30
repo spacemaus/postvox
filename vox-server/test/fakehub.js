@@ -29,7 +29,7 @@ exports.FakeHub = function() {
   })
   .post(function(req, res) {
     var userProfile = JSON.parse(JSON.stringify(req.body));
-    userProfile.hubCreatedAt = new Date().getTime();
+    userProfile.hubCreatedAt = Date.now();
     userProfile.hubSyncedAt = userProfile.hubCreatedAt;
     var data = new Buffer(
         userProfile.about +

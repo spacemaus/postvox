@@ -48,7 +48,7 @@ exports.flags = {
 exports.PostMessage = function(context, nick, text) {
   return context.connectionManager.Connect(nick, nick)
     .then(function(conn) {
-      var now = new Date().getTime();
+      var now = Date.now();
       var message = {
           author: nick,
           source: nick,

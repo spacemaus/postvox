@@ -114,7 +114,7 @@ function HandleConnection(service, socket) {
     debug('DISCONNECT %s', context.sessionId);
     eyes.dec('sockets.open');
     if (context.sessionId) {
-      var now = new Date().getTime();
+      var now = Date.now();
       context.db.SetSessionConnected({
           sessionId: context.sessionId,
           isConnected: false,

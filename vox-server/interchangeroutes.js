@@ -84,7 +84,7 @@ router.route('/session/:sessionId?')
     .then(function(session) {
       var version = req.payload.version;
       var agent = req.payload.agent;
-      var now = new Date().getTime();
+      var now = Date.now();
 
       // TODO Implement webhooks:
       if (req.payload.webhook) {
@@ -462,14 +462,14 @@ router.route('/messages')
 }))
 .post(function(req, res, next) {
   var author = req.payload.author;
-  var now = new Date().getTime();
+  var now = Date.now();
   var authTimer = eyes.start('authentication.CheckMessageStanza');
   authentication.CheckMessageStanza(req.context.hubClient, req.payload)
     .then(function() {
       authTimer();
-      var now = new Date().getTime();
+      var now = Date.now();
       // TODO Use a sensible ID assignment scheme:
-      var messageUrl = req.url + '/' + new Date().getTime() + String(Math.random()).substr(1);
+      var messageUrl = req.url + '/' + Date.now() + String(Math.random()).substr(1);
 
       var text = req.payload.text;
       var title = req.payload.title;

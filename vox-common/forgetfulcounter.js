@@ -34,7 +34,7 @@ ForgetfulCounter.prototype.clear = function() {
  * @return {Number} The current count.
  */
 ForgetfulCounter.prototype.inc = function(key) {
-  var now = new Date().getTime() / 1e3;
+  var now = Date.now() / 1e3;
   var decayRate = this.decayRate;
 
   var entry = this.keys[key];

@@ -174,7 +174,7 @@ CheckStanza = function(hubClient, stanza, fields, author, opt_sigValue) {
       debug('First verification failed', author);
       // The signatures do not match.  Refetch the author's profile directly
       // from the hub, then try again.
-      if (new Date().getTime() - userProfile.syncedAt < MIN_ENTITY_RESYNC_MS) {
+      if (Date.now() - userProfile.syncedAt < MIN_ENTITY_RESYNC_MS) {
         debug('Not refetching user profile', author);
         return false;
       }

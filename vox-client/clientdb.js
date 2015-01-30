@@ -11,7 +11,7 @@ var logging = function(v) {
 
 
 function EnsureTimestamps(columns) {
-  var now = new Date().getTime();
+  var now = Date.now();
   if (!columns.updatedAt) {
     columns.updatedAt = now;
   }

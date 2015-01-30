@@ -29,7 +29,7 @@ exports.Follow = function(context, who, weight) {
       subscriptionUrl: followUrl,
       source: who,
       weight: weight,
-      updatedAt: new Date().getTime()
+      updatedAt: Date.now()
   };
   authentication.SignSubscriptionStanza(subscription, context.privkey);
   return context.db.InsertSubscription(subscription)

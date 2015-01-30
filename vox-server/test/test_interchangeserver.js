@@ -32,7 +32,7 @@ describe('interchangeserver', function() {
   var server;
   var clientManager;
 
-  var BEFORE_NOW = new Date().getTime()
+  var BEFORE_NOW = Date.now()
   var NOW = BEFORE_NOW + 1;
 
   var userKeys = {};

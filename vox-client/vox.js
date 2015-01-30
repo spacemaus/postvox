@@ -249,7 +249,7 @@ function RootContext(argv, view) {
         return conn.POST(reqUrl, {
             routeUrl: routeUrl,
             weight: weight,
-            updatedAt: new Date().getTime()
+            updatedAt: Date.now()
         })
         .then(function() {
           return self.db.InsertRoute({

@@ -27,7 +27,7 @@ var sqlLogging = function(v) {
  * not set.
  */
 function EnsureTimestamps(columns, allowSyncedAt) {
-  var now = new Date().getTime();
+  var now = Date.now();
   if (!allowSyncedAt || !columns.syncedAt) {
     columns.syncedAt = now;
   }

@@ -21,7 +21,7 @@ exports.SetStatusText = function(context, statusText) {
       var userStatus = {
           nick: context.nick,
           statusText: statusText,
-          updatedAt: new Date().getTime()
+          updatedAt: Date.now()
       };
       authentication.SignUserStatusStanza(userStatus, context.privkey);
       return conn.POST('vox://' + context.nick + '/status', userStatus);

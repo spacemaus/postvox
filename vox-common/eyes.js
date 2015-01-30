@@ -180,7 +180,7 @@ MetricsServer.prototype._handleRequest = function(req, res) {
   });
   res.write('Started ' + this.startTime);
   res.write('\nUptime ' + process.uptime() + ' seconds');
-  res.write('\nNow ' + (new Date().getTime()));
+  res.write('\nNow ' + (Date.now()));
   var memoryUsage = process.memoryUsage();
   res.write('\nRSS ' + memoryUsage.rss / 1e3);
   res.write('K\nheapUsed ' + memoryUsage.heapUsed / 1e3);

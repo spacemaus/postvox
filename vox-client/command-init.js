@@ -230,6 +230,6 @@ function IdentityConfigToUserProfile(identity) {
       'nick': identity.nick,
       'interchangeUrl': identity.interchangeUrl,
       'pubkey': identity.pubkey,
-      'updatedAt': identity.updatedAt || new Date().getTime(),
+      'updatedAt': identity.updatedAt || Date.now(),
   };
 }

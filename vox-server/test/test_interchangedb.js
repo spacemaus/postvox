@@ -16,7 +16,7 @@ temp.track(); // Delete temp files.
 
 
 describe('interchangedb', function() {
-  var BEFORE_NOW = new Date().getTime()
+  var BEFORE_NOW = Date.now()
   var NOW = BEFORE_NOW + 1;
   var AFTER_NOW = NOW + 1;
 

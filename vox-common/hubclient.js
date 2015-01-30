@@ -62,7 +62,7 @@ exports.HubClient = function(hubUrl, db) {
         ' with the Hub at (' + urlparse.format(hubUrl) + ')...');
 
     if (!userProfile.updatedAt) {
-      userProfile.updatedAt = new Date().getTime();
+      userProfile.updatedAt = Date.now();
     }
 
     authentication.SignUserProfileStanza(userProfile,
@@ -98,7 +98,7 @@ exports.HubClient = function(hubUrl, db) {
       .then(function(userProfile) {
         // TODO expire cache.
         if (userProfile) {
-          if (opt_updatedBefore || (new Date().getTime() - userProfile.syncedAt) < MAX_USER_PROFILE_CACHE_MS) {
+          if (opt_updatedBefore || (Date.now() - userProfile.syncedAt) < MAX_USER_PROFILE_CACHE_MS) {
             return userProfile;
           }
         }
