@@ -193,6 +193,7 @@ exports.FancyView = function() {
   self.log = function(var_args) {
     var val = util.format.apply(null, arguments);
     self.mainContentBox.addItem(val);
+    self.screen.render(); // Render first so scroll updating works.
     if (self.scrollFollow) {
       self.mainContentBox.select(self.mainContentBox.children.length - 1);
       self.mainContentBox.setScrollPerc(100);
