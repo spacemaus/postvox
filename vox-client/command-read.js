@@ -57,6 +57,9 @@ exports.flags = {
  * @return {Promise<Message[]>} The messages.
  */
 exports.ReadFromSource = function(context, source, options) {
+  if (source[0] == '@') {
+    source = source.substr(1);
+  }
   return context.connectionManager.Connect(source)
     .then(function(conn) {
       return conn.GET('vox://' + source + '/messages', options)

@@ -23,6 +23,9 @@ exports.examples = [
 
 exports.Follow = function(context, who, weight) {
   var nick = context.nick;
+  if (who[0] == '@') {
+    who = who.substr(1);
+  }
   var followUrl = 'vox://' + who;
   var subscription = {
       nick: nick,

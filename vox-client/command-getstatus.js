@@ -30,6 +30,9 @@ exports.GetStatus = function(context, who) {
   if (!who) {
     who = context.nick;
   }
+  if (who[0] == '@') {
+    who = who.substr(1);
+  }
   return context.connectionManager.Connect(who)
     .then(function(conn) {
       return conn.GET('vox://' + who + '/status', {});
