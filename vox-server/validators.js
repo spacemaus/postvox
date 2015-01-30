@@ -101,6 +101,10 @@ exports.isValidTimestamp = function(ts) {
   return typeof(ts) == 'number' && ts > 0;
 }
 
+exports.isValidSeq = function(seq) {
+  return typeof(seq) == 'number' && seq > 0;
+}
+
 exports.isValidWeight = function(weight) {
   return typeof(weight) == 'number';
 }

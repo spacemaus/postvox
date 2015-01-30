@@ -7,6 +7,7 @@
 var debug = require('debug')('vox:interchangedb');
 var errors = require('vox-common/errors');
 var eyes = require('vox-common/eyes');
+var LevelChain = require('./level-chain');
 var levelup = require('level');
 var lruCache = require('lru-cache');
 var P = require('bluebird');
@@ -74,6 +75,7 @@ exports.OpenDb = function(config) {
 
   self.sequelize = db;
   self.leveldb = leveldb;
+  var levelChain = new LevelChain(leveldb);
 
   //////////////
   // Entities //
@@ -151,7 +153,7 @@ exports.OpenDb = function(config) {
    * Maps from routeUrl to { maxSyncedAt: int, sessionIds: String[] }.
    */
   var targetListCache = lruCache({
-      max: 100000,  // 100000 * 36 bytes per UUID ~= 3.6MB
+      max: 1e5,  // 100,000 * 36 bytes per UUID ~= 3.6MB
       length: function(v) { return v.sessionIds.length  || 1 }
   });
 
@@ -176,8 +178,7 @@ exports.OpenDb = function(config) {
       eyes.mark('interchangedb.GetTargetSessionIds.cached');
       return P.resolve(cached.sessionIds);
     }
-    eyes.mark('interchangedb.GetTargetSessionIds.uncached');
-    var stopTimer = eyes.start('interchangedb.GetTargetSessionIds.uncached.latency');
+    var stopTimer = eyes.start('interchangedb.GetTargetSessionIds.uncached');
     return Session.findAll({
           where: { isConnected: true },
           attributes: [
@@ -303,6 +304,9 @@ exports.OpenDb = function(config) {
    * - By source:
    *     s/<source>/-/<syncedAt DESC>/<messageUrl>
    *
+   * - By sequence number:
+   *     s/<source>/seq/<seq ASC>/<messageUrl>
+   *
    * - By author:
    *     s/<source>/a/<author>/<syncedAt DESC>/<messageUrl>
    *
@@ -327,36 +331,29 @@ exports.OpenDb = function(config) {
    * Note that in all cases, the end key's terminator '\xff' comes _after_ the
    * separator '\x00'.
    */
-
   self.InsertMessage = function(columns, opt_allowSyncedAt) {
-    EnsureTimestamps(columns, opt_allowSyncedAt);
-    var stopTimer = eyes.start('interchangedb.InsertMessage');
     // TODO Prevent overwrites.
-    return new P(function(resolve, reject) {
-      var messageUrl = columns.messageUrl;
-      var desc = ToDesc(columns.syncedAt);
-      var prefix = 's\x00' + columns.source + '\x00';
-      var descSuffix = '\x00' + desc + '\x00' + messageUrl;
-      var b = leveldb.batch()
-        .put(messageUrl, columns)
-        .put(prefix + '-' + descSuffix, '')
-        .put(prefix + 'a\x00' + columns.author + descSuffix, '');
-      if (columns.thread) {
-        b.put(prefix + 't\x00' + columns.thread + descSuffix, '')
-      }
-      if (columns.replyTo) {
-        b.put(prefix + 'rt\x00' + columns.replyTo + descSuffix, '')
-      }
-      b.write(function(err) {
-        stopTimer();
-        if (err) {
-          debug('LevelDB error',err);
-          reject(err);
-        } else {
-          resolve(columns);
+    var stopTimer = eyes.start('interchangedb.InsertMessage');
+    var messageUrl = columns.messageUrl;
+    return levelChain.batch(columns.source, function(batch, seq) {
+        EnsureTimestamps(columns, opt_allowSyncedAt);
+        columns.seq = seq;
+        var prefix = 's\x00' + columns.source + '\x00';
+        var descSuffix = '\x00' + ToDesc(columns.syncedAt) + '\x00' + messageUrl;
+        batch
+          .put(messageUrl, columns)
+          .put(prefix + '-' + descSuffix, '')
+          .put(prefix + 'seq\x00' + ToAsc(seq) + '\x00' + messageUrl, '')
+          .put(prefix + 'a\x00' + columns.author + descSuffix, '');
+        if (columns.thread) {
+          batch.put(prefix + 't\x00' + columns.thread + descSuffix, '')
         }
-      });
-    });
+        if (columns.replyTo) {
+          batch.put(prefix + 'rt\x00' + columns.replyTo + descSuffix, '')
+        }
+      })
+      .then(stopTimer)
+      .return(columns);
   }
 
   self.GetMessage = function(messageUrl) {
@@ -387,12 +384,16 @@ exports.OpenDb = function(config) {
       prefix += 't\x00' + options.thread;
     } else if (options.replyTo) {
       prefix += 'rt\x00' + options.replyTo;
+    } else if (options.seqAfter) {
+      prefix += 'seq'
     } else {
       prefix += '-';
     }
     prefix += '\x00';
     var startKey = prefix;
-    if (options.syncedBefore) {
+    if (options.seqAfter) {
+      startKey += ToAsc(options.seqAfter);
+    } else if (options.syncedBefore) {
       startKey += ToDesc(options.syncedBefore) + '\x00';
     }
     var endKey;
@@ -645,7 +646,7 @@ function ScanIndex(leveldb, options) {
  * For leveldb keys, translates a Number into a string that can be
  * lexicographically ordered from lowest to highest (positive numbers only).
  */
-function ToHex(n) {
+function ToAsc(n) {
   _toHexBuffer.writeDoubleBE(n, 0)
   return _toHexBuffer.toString('hex');
 }

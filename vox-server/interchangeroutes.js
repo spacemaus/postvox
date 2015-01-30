@@ -426,6 +426,7 @@ router.route('/messages')
 .all(startTimer)
 .get(validators.CheckPayload({
     limit: validators.isValidLimit.optional,
+    seqAfter: validators.isValidSeq.optional,
     syncedBefore: validators.isValidTimestamp.optional,
     syncedAfter: validators.isValidTimestamp.optional
 }))
@@ -435,6 +436,7 @@ router.route('/messages')
   req.context.db.ListMessages({
         source: req.voxSource,
         limit: limit,
+        seqAfter: req.payload.seqAfter,
         syncedBefore: req.payload.syncedBefore,
         syncedAfter: req.payload.syncedAfter
     })
