@@ -284,27 +284,30 @@ function MessagePrinter(context) {
     // TODO Print idStr and implement "/reply".
     //var idStr = colors.yellow.dim('[' + localId + ']');
     var when = moment(message.syncedAt).format('MMM D h:mm:ss A');
+    when = '{light-black-fg}' + when + '{/light-black-fg}';
     var author = colors.cyan.bold(message.author);
+
+    // TODO We _could_ escape UGC.
+
     if (message.title && message.userUrl) {
-      context.view.log('%s %s', colors.dim(when), author);
+      context.view.log('%s %s', when, author);
       context.view.log('    %s', colors.green(message.title));
       context.view.log('    %s', colors.underline(message.userUrl));
       if (message.text) {
         context.view.log('    %s', message.text);
       }
     } else if (message.title) {
-      context.view.log('%s %s %s', colors.dim(when), author, colors.green(message.title));
+      context.view.log('%s %s %s', when, author, colors.green(message.title));
       if (message.text) {
         context.view.log('    %s', message.text);
       }
     } else  if (message.url) {
-      context.view.log('%s %s %s', colors.dim(when), author, colors.underline(message.userUrl));
+      context.view.log('%s %s %s', when, author, colors.underline(message.userUrl));
       if (message.text) {
         context.view.log('    %s', message.text);
       }
     } else {
-      context.view.log('%s %s %s',
-          colors.dim(when), author, message.text);
+      context.view.log('%s %s %s', when, author, message.text);
     }
   }
 

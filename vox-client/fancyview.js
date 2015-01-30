@@ -18,7 +18,7 @@ exports.FancyView = function() {
       height: '100%'
   });
 
-  self.mainContentBox = blessed.list({
+  self.mainContentBox = blessed.box({
       parent: self.rootBox,
       top: 0,
       height: self.screen.height - 3,
@@ -30,9 +30,10 @@ exports.FancyView = function() {
       scrollable: true,
       mouse: true,
       scrollbar: {
-        bg: 'yellow'
+          bg: 'yellow'
       }
   });
+  attachSelectionMethods(self.mainContentBox);
 
   self.helpBox = blessed.box({
       parent: self.rootBox,
@@ -108,7 +109,10 @@ exports.FancyView = function() {
     self.screen.render();
   }
 
-  self.screen.on('resize', render);
+  self.screen.on('resize', function() {
+    self.mainContentBox.layout();
+    layout();
+  });
 
   self.inputBox.key(['C-c'], function(ch, key) {
     return process.exit(0);
@@ -144,7 +148,7 @@ exports.FancyView = function() {
       cb.select(0);
     } else if (key == 'G') {
       cb.setScrollPerc(100);
-      cb.select(cb.items.length - 1);
+      cb.select(cb.children.length - 1);
     }
     updateScroll();
   });
@@ -165,7 +169,7 @@ exports.FancyView = function() {
 
   function updateScroll() {
     self.screen.render();
-    self.scrollFollow = self.mainContentBox.selected == self.mainContentBox.items.length - 1;
+    self.scrollFollow = self.mainContentBox.selected == self.mainContentBox.children.length - 1;
   }
 
   self.scrollFollow = true;
@@ -188,9 +192,9 @@ exports.FancyView = function() {
 
   self.log = function(var_args) {
     var val = util.format.apply(null, arguments);
-    self.mainContentBox.add(val);
+    self.mainContentBox.addItem(val);
     if (self.scrollFollow) {
-      self.mainContentBox.select(self.mainContentBox.items.length - 1);
+      self.mainContentBox.select(self.mainContentBox.children.length - 1);
       self.mainContentBox.setScrollPerc(100);
     } else {
       // TODO Only flash when new line is offscreen.
@@ -205,7 +209,7 @@ exports.FancyView = function() {
   }
 
   self.scrollToEnd = function() {
-    self.mainContentBox.select(self.mainContentBox.items.length - 1);
+    self.mainContentBox.select(self.mainContentBox.children.length - 1);
     self.mainContentBox.setScrollPerc(100);
     updateScroll();
   }
@@ -256,3 +260,63 @@ exports.FancyView = function() {
   return self;
 }
 
+
+/**
+ * blessed's List widget doesn't seem to support lines that need to wrap, so we
+ * implement something like it here.
+ */
+function attachSelectionMethods(box) {
+  box.selected = 0;
+
+  var lines = 0;
+
+  box.layout = function() {
+    lines = 0;
+    box.children.forEach(function(child) {
+      child.top = lines;
+      child.height = child.getScreenLines().length;
+      lines += child.height;
+    })
+  }
+
+  box.addItem = function(text) {
+    var node = blessed.text({
+        width: '100%',
+        top: lines,
+        height: 1,
+        tags: true,
+        content: text
+    });
+    box.append(node);
+    node.height = node.getScreenLines().length;
+    lines += node.height;
+  }
+
+  box.up = function(n) {
+    n = n === undefined ? 1 : n;
+    box.select(box.selected - n);
+  }
+
+  box.down = function(n) {
+    n = n === undefined ? 1 : n;
+    box.select(box.selected + n);
+  }
+
+  box.select = function(n) {
+    highlight(box.selected, false);
+    n = Math.max(0, Math.min(box.children.length - 1, n));
+    if (n == -1) {
+      return;
+    }
+    box.selected = n;
+    highlight(n, true);
+  }
+
+  function highlight(n, on) {
+    var item = box.children[n];
+    if (!item) {
+      return;
+    }
+    item.style.underline = on;
+  }
+}
