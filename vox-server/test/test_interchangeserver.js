@@ -168,8 +168,22 @@ describe('interchangeserver', function() {
       });
   }
 
-  /** Sends POST to vox://<source>/subscribers */
+  /** Sends POST to vox://<source>/subscriptions */
   function PostSubscription(source, stanza) {
+    return clientManager.Connect(source, source)
+      .then(function(conn) {
+        authentication.SignSubscriptionStanza(stanza, userKeys[source]);
+        return conn.POST('vox://' + source + '/subscriptions', stanza);
+      })
+      .then(function(reply) {
+        assert.equal(reply.status, 200);
+        assert(!!reply.subscription);
+        return reply.subscription;
+      })
+  }
+
+  /** Sends POST to vox://<source>/subscribers */
+  function PostSubscriber(source, stanza) {
     return clientManager.Connect(source, stanza.nick)
       .then(function(conn) {
         authentication.SignSubscriptionStanza(stanza, userKeys[stanza.nick]);
@@ -350,7 +364,12 @@ describe('interchangeserver', function() {
         return EstablishRoute('sender', 'vox://sender/subscriptions');
       })
       .then(function() {
-        return PostSubscription('sender', { nick: 'sender', subscriptionUrl: 'vox://other/messages', weight: 1, updatedAt: NOW });
+        return PostSubscription('sender', {
+            nick: 'sender',
+            subscriptionUrl: 'vox://other/messages',
+            weight: 1,
+            updatedAt: NOW
+         });
       })
       .catch(function(err) {
         done(err);
@@ -423,15 +442,15 @@ describe('interchangeserver', function() {
   //     });
   // });
 
-  it('lists subscribers for a source', function() {
+  it('lists subscriptions for a source', function() {
     return P.all([RegisterUser('tester'), RegisterUser('other')])
       .then(function() {
         return P.all([
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW }),
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
-            PostSubscription('tester', { nick: 'other', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW + 3}),
-            PostSubscription('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW }),
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
+            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW + 3}),
+            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
         ])
       })
       .then(function() {
@@ -451,11 +470,11 @@ describe('interchangeserver', function() {
     return P.all([RegisterUser('tester'), RegisterUser('other')])
       .then(function() {
         return P.all([
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW }),
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
-            PostSubscription('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
-            PostSubscription('tester', { nick: 'other', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW + 3 }),
-            PostSubscription('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW }),
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
+            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
+            PostSubscriber('tester', { nick: 'other', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW + 3 }),
+            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
         ])
       })
       .then(function() {

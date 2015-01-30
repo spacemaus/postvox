@@ -177,7 +177,7 @@ router.route('/session/:sessionId/routes')
 ////////////////////////////
 
 /**
- * Get the subscriptions of <source>.
+ * Get or update the subscriptions of <source>.
  */
 router.route('/subscriptions')
 .all(startTimer)
@@ -203,9 +203,44 @@ router.route('/subscriptions')
     .finally(req.stopTimer)
     .catch(next);
 })
+.post(validators.CheckPayload({
+    nick: validators.isValidNick,
+    subscriptionUrl: validators.isValidSubscriptionUrl,
+    weight: validators.isValidWeight,
+    updatedAt: validators.isValidTimestamp
+}))
+.post(function(req, res, next) {
+  if (req.payload.nick != req.voxSource) {
+    res.sendStatus(400, 'Payload nickname does not match vox url source.');
+    return;
+  }
+  authentication.CheckSubscriptionStanza(req.context.hubClient, req.payload)
+    .then(function() {
+      return req.context.db.InsertSubscription({
+          nick: req.payload.nick,
+          subscriptionUrl: req.payload.subscriptionUrl,
+          weight: req.payload.weight,
+          updatedAt: req.payload.updatedAt,
+          sig: req.payload.sig
+      });
+    })
+    .then(function(subscription) {
+      res.json({
+          status: 200,
+          subscription: subscription
+      });
+      var sourceUrl = 'vox://' + req.voxSource;
+      req.context.TargetCast([sourceUrl, sourceUrl + '/subscriptions'],
+          'SUBSCRIPTION',
+          subscription);
+    })
+    .finally(req.stopTimer)
+    .catch(next);
+});
+
 
 /**
- * Register a new subscriber.
+ * Register a subscriber.
  */
 router.route('/subscribers')
 .all(startTimer)
@@ -231,16 +266,12 @@ router.route('/subscribers')
           status: 200,
           subscription: subscription
       });
-      var targets = [
-          voxurl.ToSourceUrl(req.payload.subscriptionUrl),
-          req.payload.subscriptionUrl + '/subscribers'
-      ];
-      if (req.voxSource == req.payload.nick) {
-        var sourceUrl = 'vox://' + req.voxSource;
-        targets.push(sourceUrl, sourceUrl + '/subscriptions');
-      }
-      req.context.TargetCast(
-          targets,
+      var sourceUrl = voxurl.ToSourceUrl(req.payload.subscriptionUrl);
+      req.context.TargetCast([
+              sourceUrl,
+              sourceUrl + '/subscribers',
+              req.payload.subscriptionUrl + '/subscribers'
+          ],
           'SUBSCRIPTION',
           subscription);
     })

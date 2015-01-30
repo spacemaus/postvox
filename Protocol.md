@@ -38,6 +38,7 @@ Table of contents
     - [Begin or resume a session](#begin-or-resume-a-session)
     - [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
     - [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
+    - [Notify the server and listeners that a resource is being followed](#notify-the-server-and-listeners-that-a-resource-is-being-followed)
     - [Create or update a message](#create-or-update-a-message)
     - [List existing messages](#list-existing-messages)
     - [List replies to a specific message](#list-replies-to-a-specific-message)
@@ -286,6 +287,7 @@ metadata.
 - [Begin or resume a session](#begin-or-resume-a-session)
 - [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
 - [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
+- [Notify the server and listeners that a resource is being followed](#notify-the-server-and-listeners-that-a-resource-is-being-followed)
 - [Create or update a message](#create-or-update-a-message)
 - [List existing messages](#list-existing-messages)
 - [List replies to a specific message](#list-replies-to-a-specific-message)
@@ -357,6 +359,11 @@ stanza to anyone listening, but has no effect what actually gets pushed to the
 client.  A `/routes` endpoint requests that the server deliver the stanzas to a
 session client, but does not tell other listeners about it.
 
+That is, if you want to follow a source, but you don't want to broadcast that
+fact, then use `/routes`.  If you want to tell others that you're interested in
+a source, but you don't want to receive updates, then use `/subscribers` and
+`/subscriptions`.
+
 Valid `routeUrl` patterns:
 
     vox://<source>
@@ -389,7 +396,7 @@ status  | int | The status code of the result.  See [Status codes](#status-codes
 Notify the server and listeners that a user is following a resource
 ----------------------------------------------------------------------
 
-    POST vox://<source>/subscribers
+    POST vox://<source>/subscriptions
 
 Valid `subscriptionUrl` patterns (same as `routeUrl` for `/routes`):
 
@@ -409,7 +416,7 @@ Valid `subscriptionUrl` patterns (same as `routeUrl` for `/routes`):
 Name | Type | Details
 :----|:-----|:-------
 subscriptionUrl | URL | The URL of the resource that the user is following.
-nick            | String | The nickname of the user who is subscribing.
+nick            | String | The nickname of the user who is subscribing.  Must be the same as `<source>`.
 weight          | int | The weight of the subscription.  1 or 0, with 1 meaning 'subscribe' and 0 meaning 'unsubscribe'.
 updatedAt       | Timestamp (ms) | The timestamp of the command.  For a given `nick` and URL, the server will accept only commands with a timestamp larger than the largest `updatedAt` received for the given URL so far.
 sig             | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
@@ -426,9 +433,27 @@ subscription | [Subscription](#Subscription-stanza) | The subscription that was 
 
 Publishes a [Subscription stanza](#Subscription-stanza) to these paths:
 
+    vox://<source>
+    vox://<source>/subscriptions
+
+
+
+Notify the server and listeners that a resource is being followed
+----------------------------------------------------------------------
+
+    POST vox://<source>/subscribers
+
+Identical to [the previous endpoint](#notify-the-server-and-listeners-that-a
+-user-is-following-a-resource), except that the parameter `nick` does not have
+to match the source, and the stanza is only published to the paths listed here.
+
+#### Publishes
+
+Publishes a [Subscription stanza](#Subscription-stanza) to these paths:
+
+    vox://<source>
     vox://<source>/subscribers
-    vox://<source> (if `nick` == `source`)
-    vox://<source>/subscriptions (if `nick` == `source`)
+    <subscriptionUrl>/subscribers
 
 
 
