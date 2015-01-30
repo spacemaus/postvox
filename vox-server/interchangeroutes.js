@@ -19,7 +19,7 @@ var router = exports.router = require('express').Router();
 var MakeCanonicalName = voxcommon.validation.MakeCanonicalName;
 
 var POSTVOX_PROTOCOL_VERSION = '0.0.0';
-var SERVER_AGENT = 'Postvox Vanilla Server 0.0.1';
+var SERVER_AGENT = 'Postvox Vanilla Server 0.0.2';
 
 
 ////////////////////////////////////////////////////////////////////////////////

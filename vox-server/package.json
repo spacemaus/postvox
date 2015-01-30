@@ -1,6 +1,6 @@
 {
   "name": "vox-server",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A server for the Postvox network",
   "author": "spacemaus@spacemaus.com",
   "main": "interchangeserver.js",
