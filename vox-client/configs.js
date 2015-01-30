@@ -3,7 +3,11 @@ var jsonFormat = require('json-format');
 
 
 exports.parse = function(filename) {
-  return JSON.parse(fs.readFileSync(filename, 'utf8'));
+  var s = fs.readFileSync(filename, 'utf8');
+  if (!s) {
+    return {};
+  }
+  return JSON.parse(s);
 }
 
 
