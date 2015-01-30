@@ -257,6 +257,10 @@ exports.FancyView = function() {
     self.inputBox.style.fg = blessed.colors.convert(color);
   }
 
+  self.lightBlack = function(s) {
+    return '{light-black-fg}' + s + '{/light-black-fg}';
+  }
+
   return self;
 }
 

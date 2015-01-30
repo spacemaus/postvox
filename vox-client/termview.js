@@ -79,6 +79,10 @@ exports.TermView = function() {
   self.setInputColor = function() {}
   self.render = function() {}
 
+  self.lightBlack = function(s) {
+    return colors.dim(s);
+  }
+
   self.setInputLine = function(text) {
     rl.line = text;
     self.prompt();

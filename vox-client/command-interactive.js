@@ -283,8 +283,7 @@ function MessagePrinter(context) {
 
     // TODO Print idStr and implement "/reply".
     //var idStr = colors.yellow.dim('[' + localId + ']');
-    var when = moment(message.syncedAt).format('MMM D h:mm:ss A');
-    when = '{light-black-fg}' + when + '{/light-black-fg}';
+    var when = context.view.lightBlack(moment(message.syncedAt).format('MMM D h:mm:ss A'));
     var author = colors.cyan.bold(message.author);
 
     // TODO We _could_ escape UGC.
