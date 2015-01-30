@@ -6,6 +6,7 @@
 
 
 var assert = require('assert');
+var moreAsserts = require('./more-asserts');
 var interchangedb = require('../interchangedb');
 var P = require('bluebird');
 var temp = require('temp');
@@ -93,11 +94,7 @@ describe('interchangedb', function() {
       .then(insertMessage.bind(null, 'aaa2', 'aaa', 'aaa', 2))
       .then(insertMessage.bind(null, 'aaa3', 'aaa', 'bbb', 3))
       .then(insertMessage.bind(null, 'aaa4', 'aaa', 'bbb', 4))
-      .then(function() {
-        return db.ListMessages({
-            source: 'aaa'
-        });
-      })
+      .then(db.ListMessages.bind(db, { source: 'aaa' }))
       .then(function(messages) {
         assert.equal(2, messages.length);
         assert.equal('aaa2', messages[0].messageUrl);
@@ -105,11 +102,7 @@ describe('interchangedb', function() {
         assert.equal('aaa1', messages[1].messageUrl);
         assert.equal(1, messages[1].seq);
       })
-      .then(function() {
-        return db.ListMessages({
-            source: 'bbb'
-        });
-      })
+      .then(db.ListMessages.bind(db, { source: 'bbb' }))
       .then(function(messages) {
         assert.equal(2, messages.length);
         assert.equal('aaa4', messages[0].messageUrl);
@@ -164,5 +157,29 @@ describe('interchangedb', function() {
         assert.equal('url3', messages[0].messageUrl);
         assert.equal('url4', messages[1].messageUrl);
       })
+  })
+
+  it('refreshes target cache on session reconnect', function() {
+    return P.all([
+          db.NewSession({ sessionId: 's1', isConnected: true }),
+          db.NewSession({ sessionId: 's2', isConnected: true }),
+          db.InsertRoute({ routeUrl: 'url1', sessionId: 's1', weight: 1 }),
+          db.InsertRoute({ routeUrl: 'url1', sessionId: 's2', weight: 1 }),
+      ])
+      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {})) // Fill the cache.
+      .then(function(sessionIds) {
+        moreAsserts.sortedArraysEqual(['s1', 's2'], sessionIds);
+        db.UncacheTargetSessionId('url1', 's1');
+        return db.SetSessionConnected({ sessionId: 's1', isConnected: false })
+      })
+      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {}, true))
+      .then(function(sessionIds) {
+        moreAsserts.sortedArraysEqual(['s2'], sessionIds);
+        return db.SetSessionConnected({ sessionId: 's1', isConnected: true });
+      })
+      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {}, true))
+      .then(function(sessionIds) {
+        moreAsserts.sortedArraysEqual(['s1', 's2'], sessionIds);
+      });
   })
 })

@@ -5,6 +5,7 @@
  */
 
 var debug = require('debug')('vox:interchangedb');
+var debugSql = require('debug')('vox:interchangedb:sql');
 var errors = require('vox-common/errors');
 var eyes = require('vox-common/eyes');
 var LevelChain = require('./level-chain');
@@ -12,11 +13,12 @@ var levelup = require('level');
 var lruCache = require('lru-cache');
 var P = require('bluebird');
 var S = require('sequelize');
+var TargetSessionCache = require('./target-session-cache');
 var util = require('util');
 
 
-var logging = function(v) {
-  debug(v);
+var sqlLogging = function(v) {
+  debugSql(v);
 }
 
 
@@ -67,7 +69,7 @@ exports.OpenDb = function(config) {
   var db = new S(null, null, null, {
       dialect: 'sqlite',
       storage: self.dbFile,
-      logging: logging
+      logging: sqlLogging
   });
 
   var leveldb = levelup(self.messageDbDir, { valueEncoding: 'json' });
@@ -136,96 +138,168 @@ exports.OpenDb = function(config) {
           type: S.STRING,
           primaryKey: true
       },
-      'version'      : S.STRING,
-      'agent'        : S.STRING,
-      'webhook'      : S.STRING,
-      'isConnected'  : S.BOOLEAN,
-      'remoteAddress': S.STRING,
-      'createdAt'    : S.BIGINT,
-      'lastSeenAt'   : S.BIGINT
+      'version'         : S.STRING,
+      'agent'           : S.STRING,
+      'webhook'         : S.STRING,
+      'isConnected'     : S.BOOLEAN,
+      'remoteAddress'   : S.STRING,
+      'createdAt'       : S.BIGINT,
+      'lastSeenAt'      : S.BIGINT,
+      'connectedAtDbSeq': S.BIGINT
   });
 
   self.FindSession = function(sessionId) {
     return Session.find({ where: { sessionId: sessionId } });
   }
 
-  /**
-   * Maps from routeUrl to { maxSyncedAt: int, sessionIds: String[] }.
-   */
-  var targetListCache = lruCache({
-      max: 1e5,  // 100,000 * 36 bytes per UUID ~= 3.6MB
-      length: function(v) { return v.sessionIds.length  || 1 }
-  });
+  var targetSessionCache = new TargetSessionCache(1e5) // 1e5 * 36 bytes per UUID ~= 3.6MB
+  var MIN_TARGET_SESSION_CACHE_REFRESH_MS = 10 * 1e3; // Refresh at most every 10 seconds.
 
   self.NewSession = function(columns) {
     eyes.mark('interchangedb.NewSession');
+    if (columns.isConnected) {
+      // Not portable, but we just need any number that is strictly increasing
+      // from the DB's point of view, so we can (a) tell given two query result
+      // sets which is most recent, and (b) scan for just the sessions that have
+      // connected since a previous query.
+      columns.connectedAtDbSeq = S.fn('total_changes');
+    }
     return Session.create(columns);
   }
 
   self.SetSessionConnected = function(columns) {
+    if (columns.isConnected) {
+      columns.connectedAtDbSeq = S.fn('total_changes');
+    }
     return Session.update(columns,
         { where: { sessionId: columns.sessionId } });
   }
 
   /**
-   * Gets the list of session IDs of connected sessions that have an active
+   * Calls callback(id) for each session ID that is connected and has an active
    * route for the given URL.
    */
-  self.GetTargetSessionIds = function(url) {
-    eyes.mark('interchangedb.GetTargetSessionIds');
-    var cached = targetListCache.get(url);
+  self.ForTargetSessionIds = function(url, callback, opt_forceRefresh) {
+    eyes.mark('interchangedb.ForTargetSessionIds');
+
+    var cached = targetSessionCache.get(url);
+    var stopTimer;
+    var originalDbSeq;
+
+    // Check if the session ID list is cached:
     if (cached) {
-      eyes.mark('interchangedb.GetTargetSessionIds.cached');
-      return P.resolve(cached.sessionIds);
+      eyes.mark('interchangedb.ForTargetSessionIds.cached');
+
+      // It is cached, so start calling those callbacks.
+      cached.cooperativeForEach(callback);
+
+      // See if we need to refresh the cache entry.  If there's a pending
+      // promise, we'll chain off of it.  Otherwise, we check to see if it's
+      // been long enough since the last refresh.
+      var canRefresh = opt_forceRefresh || ((Date.now() - cached.lastRefreshTime) > MIN_TARGET_SESSION_CACHE_REFRESH_MS);
+      if ((!cached.promise || !cached.promise.isPending()) && canRefresh) {
+        var stopTimer = eyes.start('interchangedb.ForTargetSessionIds.refresh_cache');
+        debug('Refreshing cache for %s', url);
+        // We query for any sessions that have connected since the cache was
+        // last populated.
+        cached.promise = queryForTargetSessions(url, cached.dbSeq);
+        originalDbSeq = cached.dbSeq;
+      }
+    } else {
+      // It's not cached, so we need to initiate a full fetch.
+      debug('Populating cache for %s', url);
+      cached = targetSessionCache.set(url, [], 0);
+      var stopTimer = eyes.start('interchangedb.ForTargetSessionIds.uncached');
+      cached.promise = queryForTargetSessions(url);
+      originalDbSeq = cached.dbSeq;
     }
-    var stopTimer = eyes.start('interchangedb.GetTargetSessionIds.uncached');
-    return Session.findAll({
-          where: { isConnected: true },
-          attributes: [
-              'sessionId',
-              [S.fn('MAX', S.col('Routes.syncedAt')), 'maxSyncedAt']
-          ],
-          include: [{
-              model: Route,
-              where: { routeUrl: url }
-          }],
-          group: '`Session`.`sessionId`',
-      }, { raw: true })
-      .then(function(sessions) {
-        var sessionIds = [];
-        var maxSyncedAt = -1;
-        for (var i = 0; i < sessions.length; i++) {
-          var session = sessions[i];
-          sessionIds.push(session['sessionId']);
-          maxSyncedAt = Math.max(session['maxSyncedAt'], maxSyncedAt);
+
+    // If no promise is pending, we can just return.
+    if (!cached.promise || !cached.promise.isPending()) {
+      return P.resolve(cached.ids);
+    }
+
+    // Wait for the pending fetch, then call the callback with the remaining
+    // results.
+    return cached.promise.then(function(results) {
+      // If stopTimer is set, then this context "owns" the promise.
+      if (stopTimer) {
+        stopTimer();
+        var cached = targetSessionCache.peek(url);
+        // Only update the cache if it hasn't been touched since the fetch started.
+        if (cached && cached.dbSeq == originalDbSeq) {
+          cached.lastRefreshTime = Date.now();
+          cached.ids.push.apply(cached.ids, results.sessionIds);
+          cached.dbSeq = Math.max(cached.dbSeq, results.dbSeq);
+          cached.promise = null;
+        } else {
+          eyes.mark('interchangedb.ForTargetSessionIds.cache_preempted_during_refresh');
         }
-        var cached = targetListCache.get(url);
-        // Prevent race conditions:
-        if (!cached || cached.maxSyncedAt < maxSyncedAt) {
-          targetListCache.set(url, {
-              maxSyncedAt: maxSyncedAt,
-              sessionIds: sessionIds
-          });
-        }
-        stopTimer(sessionIds.length);
-        return sessionIds;
-      });
+      } else {
+        eyes.mark('interchangedb.ForTargetSessionIds.cache_chained');
+      }
+      if (results.sessionIds.length) {
+        debug('Adding %d IDs to cached list for %s', results.sessionIds.length, url);
+      }
+      TargetSessionCache.cooperativeForEach(results.sessionIds, callback);
+      return cached ? cached.ids : results.sessionIds;
+    });
   }
 
   /**
-   * Removes the sessionId from the list for the given URL.
+   * Queries for sessions that are connected and also have an active route for
+   * the given URL.
+   *
+   * @param {String} url The routeUrl to query for.
+   * @param {Number} [minDbSeq] The minimum connectedAtDbSeq to query for.
+   */
+  function queryForTargetSessions(url, minDbSeq) {
+    var where = { isConnected: true };
+    if (minDbSeq) {
+      where.connectedAtDbSeq = { gt: minDbSeq };
+    }
+    return Session.findAll({
+        where: where,
+        attributes: [
+            'sessionId',
+            'connectedAtDbSeq',
+        ],
+        include: [{
+            model: Route,
+            where: { routeUrl: url, weight: { gt: 0 } },
+            attributes: []
+        }],
+        group: '`Session`.`sessionId`',
+    }, { raw: true })
+    .then(function(sessions) {
+      var sessionIds = [];
+      var dbSeq = -1;
+      for (var i = 0; i < sessions.length; i++) {
+        var session = sessions[i];
+        var sessionId = session['sessionId'];
+        sessionIds.push(sessionId);
+        dbSeq = Math.max(session['connectedAtDbSeq'], dbSeq);
+      }
+      return { sessionIds: sessionIds, dbSeq: dbSeq };
+    })
+  }
+
+  /**
+   * Removes the sessionId from the cached list for the given URL.
    */
   self.UncacheTargetSessionId = function(url, sessionId) {
-    var cached = targetListCache.peek(url);
+    var cached = targetSessionCache.peek(url);
     if (!cached) {
       return;
     }
-    var i = cached.sessionIds.indexOf(sessionId);
+    var i = cached.ids.indexOf(sessionId);
     if (i == -1) {
       return;
     }
-    cached.sessionIds.splice(i, 1);
-    targetListCache.set(url, cached); // Updates last-usedness.  Needed?
+    // Copy-on-write so that we don't disturb any iterations in progress.
+    var ids = cached.ids.slice(0, i);
+    ids.push.apply(ids, cached.ids.slice(i + 1));
+    cached.ids = ids;
   }
 
 
@@ -262,19 +336,17 @@ exports.OpenDb = function(config) {
     EnsureTimestamps(columns);
     var sessionId = columns.sessionId;
     var url = columns.routeUrl;
-    var cached = targetListCache.get(url);
+    var cached = targetSessionCache.get(url);
     if (columns.weight) {
-      if (cached && cached.sessionIds.indexOf(sessionId) == -1) { // O(N^2)!
-        cached.sessionIds.push(sessionId);
-        cached.maxSyncedAt = Math.max(cached.maxSyncedAt, columns.syncedAt);
-        targetListCache.set(url, cached);
+      if (cached && cached.ids.indexOf(sessionId) == -1) { // O(N^2)!
+        cached.ids.push(sessionId);
+        // cached.maxSyncedAt = Math.max(cached.maxSyncedAt, columns.syncedAt);
       }
     } else if (cached) {
-      var i = cached.sessionIds.indexOf(sessionId);
+      var i = cached.ids.indexOf(sessionId);
       if (cached && i != -1) {
-        cached.sessionIds.splice(i, 1);
+        cached.ids.splice(i, 1);
         // TODO race cond since maxSyncedAt does not get updated?
-        targetListCache.set(url, cached);
       }
     }
     return Route.create(columns);
@@ -548,7 +620,8 @@ exports.OpenDb = function(config) {
       return P.all([
           CreateDeleteOlderRowsTrigger(Route),
           CreateDeleteOlderRowsTrigger(Subscription),
-          CreateDeleteOlderRowsTrigger(UserStatus)
+          CreateDeleteOlderRowsTrigger(UserStatus),
+          Session.update({ isConnected: false }, { where: {} })
       ]);
     })
     .return(self);

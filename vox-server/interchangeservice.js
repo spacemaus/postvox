@@ -4,7 +4,6 @@ var hubclient = require('vox-common/hubclient');
 var interchangesockets = require('./interchangesockets');
 var interchangeweb = require('./interchangeweb');
 var P = require('bluebird');
-var timers = require('timers');
 
 
 /**
@@ -55,45 +54,34 @@ exports.InterchangeService = function(db, hubClient, commandRouter) {
    */
   self.TargetCast = function(targetUrls, eventName, data) {
     debug('cast to %s %s %s', targetUrls, eventName, data);
-    var toSocketLatency = eyes.start('targetcast.' + eventName + '.tosocket_latency');
+    var markToSocketLatency = eyes.start('targetcast.' + eventName + '.tosocket_latency');
+    var sent = {}; // Session IDs that have already received this message.
+    var p =[];
+    for (var i = 0; i < targetUrls.length; i++) {
+      var url = targetUrls[i];
+      sendToRoute(url, eventName, data, sent, markToSocketLatency)
+        .catch(function(err) {
+          console.error('Error in TargetCast', err, err.stack);
+          eyes.mark('targetcast.error');
+        })
+    }
+  }
 
-    P.all(targetUrls.map(function(url) {
-        return self.db.GetTargetSessionIds(url)
-      }))
-      .then(function(sessionIdLists) {
-        var sent = {};
-        for (var i = 0; i < sessionIdLists.length; i++) {
-          var sessionIds = sessionIdLists[i];
-          var url = targetUrls[i];
-
-          debug('casting to %d sessions for %s', sessionIds.length, url);
-
-          function SendTo(sessionId) {
-            var socket = sessionSockets[sessionId];
-            if (!socket) {
-              debug('removing disconnected session', sessionId);
-              db.UncacheTargetSessionId(url, sessionId);
-              eyes.mark('targetcast.disconnected_session');
-            } else if (!(sessionId in sent)) {
-              sent[sessionId] = true;
-              socket.emit(eventName, data);
-              toSocketLatency();
-            }
-          }
-
-          eyes.observe('targetcast.number_of_sessions', sessionIds.length);
-
-          if (sessionIds.length > 10) {
-            // If there are more than a few target sessions, then don't block IO
-            // on sending.
-            for (var j = 0; j < sessionIds.length; j++) {
-              timers.setImmediate(SendTo, sessionIds[j]);
-            }
-          } else {
-            for (var j = 0; j < sessionIds.length; j++) {
-              SendTo(sessionIds[j]);
-            }
-          }
+  function sendToRoute(url, eventName, data, sent, markToSocketLatency) {
+    var sentCount = 0;
+    return db.ForTargetSessionIds(url,
+      function(sessionId) {
+        var socket = sessionSockets[sessionId];
+        if (!socket) {
+          debug('removing disconnected session', sessionId);
+          // TODO We can be lazier about this:
+          db.UncacheTargetSessionId(url, sessionId);
+          eyes.mark('targetcast.disconnected_session');
+        } else if (!(sessionId in sent)) {
+          sent[sessionId] = true;
+          socket.emit(eventName, data);
+          sentCount++;
+          markToSocketLatency();
         }
       })
   }
