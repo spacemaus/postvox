@@ -8,6 +8,7 @@
 var debug = require('debug')('vox:eyes');
 var http = require('http');
 var metrics = require('metrics');
+var os = require('os');
 
 
 /**
@@ -185,7 +186,14 @@ MetricsServer.prototype._handleRequest = function(req, res) {
   res.write('\nRSS ' + memoryUsage.rss / 1e3);
   res.write('K\nheapUsed ' + memoryUsage.heapUsed / 1e3);
   res.write('K\nheapTotal ' + memoryUsage.heapTotal / 1e3);
-  res.write('K\n=================\n');
+  res.write('K\nos.totalmem ' + os.totalmem() / 1e3);
+  res.write('K\nos.freemem ' + os.freemem() / 1e3);
+  res.write('K\nos.loadavg ' + os.loadavg());
+  if (!this.cpuCount) {
+    this.cpuCount = os.cpus().length;
+  }
+  res.write('\nos.cpu_count ' + this.cpuCount);
+  res.write('\n=================\n');
 
   if (!this.sorted) {
     this.servedMetrics.sort(function(a, b) { return a[0].localeCompare(b[0]) });
