@@ -149,14 +149,13 @@ connected client, but the connection is broken before the client received the
 message, it is the client's responsibility to (a) reconnect to the server, and
 (b) request any messages it may have missed.
 
-Generally, this is achieved by the client asking for the `syncedAt` timestamp of
-the Nth message preceeding a given timestamp.  If the returned timestamp does
-not match the client's view, it knows to re-fetch the stanzas from that time
-period.
+`MESSAGE` stanzas have a `seq` field that clients can check.  This field is a
+strictly increasing counter for messages posted to a given source.  If a client
+finds a gap in the `seq` values it has for a source, then it can send a request
+to `vox://<source>/messages` and specify `seqAfter` and `limit`.
 
 When messages are updated or deleted, the interchange should store a "tombstone"
-at the syncedAt timestamp of the old version.  Otherwise, it is possible for the
-counts to be off.
+at the syncedAt timestamp of the old version.
 
 Endpoints that provide a list view accept `limit`, `syncedBefore`, and
 `syncedAfter` parameters.
@@ -511,7 +510,8 @@ List existing messages
 
 Name | Type | Details
 :----|:-----|:-------
-[limit]        | int | The maximum number of messages to return.
+[limit]        | int | The maximum number of messages to return.  Messages are returned in descending `syncedAt` order, unless otherwise specified.
+[seqAfter]     | int | (Optional) Return only messages with `seq` numbers greater than this value.  If set, then messages will be returned in ascending `seq` order.  Cannot be set with `syncedBefore` or `syncedAfter`.
 [syncedBefore] | Timestamp (ms) | (Optional) Return only messages received by the server before this timestamp (inclusive).  Defaults to infinity.
 [syncedAfter]  | Timestamp (ms) | (Optional) Return only messages received by the server after this timestamp (inclusive).  Defaults to 0.
 
@@ -888,6 +888,8 @@ createdAt   | Timestamp (ms) | The timestamp of when the message was created.
 updatedAt   | Timestamp (ms) | The timestamp of when the message was last updated (set to `createdAt` if the message was never updated).  Does not include the time when messages were posted to the message.
 [deletedAt] | Timestamp (ms) | The timestamp of when the message was deleted.  Unset if the message has not been deleted.
 sig         | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
+syncedAt    | Timestamp (ms) | The timestamp at which the interchange server received the message.
+seq         | int | The sequence number assigned by the interchange server.  This number increments by 1 for every message posted to a single source.  That is, `vox://spacemaus` will have a list of messages with `seq` numbers of `[1, 2, 3, ...]`, and `vox://landcatt` will have its own list of messages with `seq` numbers of `[1, 2, 3, ...]`.  Clients can fetch missing messages by filling in the gaps in the list.
 
 #### `sig` fields
 
