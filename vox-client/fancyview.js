@@ -322,6 +322,9 @@ function attachSelectionMethods(box) {
     if (!item) {
       return;
     }
-    item.style.underline = on;
+    if (n == box.children.length - 1) {
+      on = false;
+    }
+    item.style.inverse = on;
   }
 }
