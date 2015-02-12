@@ -13,7 +13,7 @@ var voxcommon = require('vox-common');
  * @param {function(v): bool} params.<name> The validator for the parameter
  *     with the given name.
  */
-exports.CheckPayload = function(params) {
+exports.checkPayload = function(params) {
   var names = Object.keys(params);
   for (var name in params) {
     var validator = params[name];
@@ -21,12 +21,39 @@ exports.CheckPayload = function(params) {
       throw new Error('Invalid validator for parameter: ' + name + ': ' + validator);
     }
   }
+  var objectChecker = exports.checkObject(params);
   return function(req, res, next) {
+    var result = objectChecker(req.payload);
+    if (result !== true) {
+      next({
+          statusCode: 400,
+          message: result
+      });
+      return;
+    }
+    next();
+  }
+}
+
+
+exports.checkObject = function(params) {
+  var names = Object.keys(params);
+  for (var name in params) {
+    var validator = params[name];
+    if (!(validator instanceof Function)) {
+      throw new Error('Invalid validator for parameter: ' + name + ': ' + validator);
+    }
+  }
+  return function(obj) {
+    if (!obj) {
+      return 'Missing parameter';
+    }
     for (var i = 0; i < names.length; i++) {
       var name = names[i];
       var validator = params[name];
-      var value = req.payload[name];
-      if (!validator(value)) {
+      var value = obj[name];
+      var result = validator(value);
+      if (result !== true) {
         var message;
         if (value === undefined && !validator.isOptional) {
           message = 'Missing parameter';
@@ -34,27 +61,52 @@ exports.CheckPayload = function(params) {
           message = 'Invalid parameter';
         }
         message += ': ' + name + '; ' + validator.validatorName + '(' + value + ')';
-        next({
-            statusCode: 400,
-            message: message
-        });
-        return;
+        if (typeof(result) == 'string') {
+          message += '; ' + result;
+        }
+        return message;
       }
     }
-    next();
+    return true;
   }
+}
+
+
+var VALID_TYPES = {
+    'MESSAGE': true,
+    'USER_PROFILE': true,
+    'USER_STATUS': true,
+    'VOTE': true,
+};
+
+exports.isValidType = function(type) {
+  return VALID_TYPES[type];
 }
 
 exports.isValidNick = function(name) {
   if (!name) {
     return false;
   }
-  return voxcommon.validation.IsValidName(name);
+  return voxcommon.validation.isValidName(name);
 }
 
-exports.isValidSource = function(source) {
-  return exports.isValidNick(source);
+exports.isValidStream = function(stream) {
+  if (!stream || typeof(stream) != 'string') {
+    return false;
+  }
+  var parts = stream.split('/');
+  if (parts.length == 1) {
+    return exports.isValidNick(parts[0]);
+  } else if (parts.length == 2) {
+    return exports.isValidNick(parts[0]) && voxcommon.validation.isValidName(parts[1]);
+  } else {
+    return false;
+  }
 }
+
+exports.isPartlyValidStanza = exports.checkObject({
+    type: exports.isValidType,
+})
 
 exports.isValidVersion = function(version) {
   return typeof(version) == 'string' && version.length < 64;
@@ -85,8 +137,8 @@ exports.isValidRouteUrl = function(url) {
   return exports.isValidVoxUrl(url);
 }
 
-exports.isValidSubscriptionUrl = function(url) {
-  return exports.isValidVoxUrl(url);
+exports.isValidVoteUrl = function(url) {
+  return exports.isValidUrl(url);
 }
 
 exports.isValidMessageUrl = function(url) {
@@ -94,7 +146,7 @@ exports.isValidMessageUrl = function(url) {
   if (!parsedUrl) {
     return false;
   }
-  return parsedUrl.protocol == 'vox:' && /^\/messages\/.+/.test(parsedUrl.pathname);
+  return parsedUrl.protocol == 'vox:' && /^(\/[^\/]+)?\/\d+/.test(parsedUrl.pathname);
 }
 
 exports.isValidTimestamp = function(ts) {
@@ -102,11 +154,19 @@ exports.isValidTimestamp = function(ts) {
 }
 
 exports.isValidSeq = function(seq) {
-  return typeof(seq) == 'number' && seq > 0;
+  return typeof(seq) == 'number' && seq >= 0;
 }
 
-exports.isValidWeight = function(weight) {
+exports.isValidOp = function(op) {
+  return op == 'DELETE' || op == 'PATCH' || op == 'POST';
+}
+
+exports.isValidScore = function(weight) {
   return typeof(weight) == 'number';
+}
+
+exports.isValidTag = function(tag) {
+  return typeof(tag) == 'string' && tag.length < 64;
 }
 
 exports.isValidLimit = function(limit) {

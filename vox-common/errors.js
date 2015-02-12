@@ -2,13 +2,15 @@
  * Error classes.
  */
 
+var util = require('util');
+
 
 function ClientError(message) {
   this.name = 'ClientError';
   this.message = message;
   this.statusCode = 400;
 }
-ClientError.prototype = new Error;
+util.inherits(ClientError, Error);
 exports.ClientError = ClientError;
 
 
@@ -17,7 +19,7 @@ function NotFoundError(message) {
   this.message = message;
   this.statusCode = 404;
 }
-NotFoundError.prototype = new Error;
+util.inherits(NotFoundError, Error);
 exports.NotFoundError = NotFoundError;
 
 
@@ -26,7 +28,7 @@ function AuthenticationError(message) {
   this.message = message;
   this.statusCode = 403;
 }
-AuthenticationError.prototype = new ClientError;
+util.inherits(AuthenticationError, ClientError);
 exports.AuthenticationError = AuthenticationError;
 
 
@@ -35,7 +37,7 @@ function ConstraintError(message) {
   this.message = message;
   this.statusCode = 409;
 }
-ConstraintError.prototype = new ClientError;
+util.inherits(ConstraintError, ClientError);
 exports.ConstraintError = ConstraintError;
 
 
@@ -45,7 +47,7 @@ function DuplicateTransactionError(message) {
   this.message = message;
   this.statusCode = 409;
 }
-DuplicateTransactionError.prototype = new ClientError;
+util.inherits(DuplicateTransactionError, ClientError);
 exports.DuplicateTransactionError = DuplicateTransactionError;
 
 
@@ -54,5 +56,5 @@ function ServerError(message) {
   this.message = message;
   this.statusCode = 500;
 }
-ServerError.prototype = new Error;
+util.inherits(ServerError, Error);
 exports.ServerError = ServerError;

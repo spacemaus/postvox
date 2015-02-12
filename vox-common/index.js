@@ -8,3 +8,4 @@ exports.HttpStub = require('./httpstub.js');
 exports.ReferenceTracker = require('./referencetracker').ReferenceTracker;
 exports.validation = require('./validation');
 exports.ratelimiter = require('./ratelimiter');
+exports.voxurl = require('./voxurl');

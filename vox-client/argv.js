@@ -24,28 +24,21 @@ exports.hubUrl;
 exports.defaultInterchangeUrl;
 
 /**
- * The config file stores the user's identity and private encryption keys.
+ * The directory where profiles are stored.
  */
-exports.configFile;
-
-/**
- * The database file stores the user's subscriptions, received messages, etc.
- */
-exports.dbDir;
+exports.profilesDir;
 
 
 if (process.env.NODE_ENV == 'development') {
   exports.hubUrl = urlparse.parse(commandLineArgs.hubUrl || 'http://localhost:9090');
   exports.defaultInterchangeUrl = commandLineArgs.defaultInterchangeUrl || 'http://localhost:9454'
-  exports.dbDir = commandLineArgs.dbDir || path.join(homeDir, '.voxhistory-dev');
-  exports.configFile = commandLineArgs.configFile || path.join(homeDir, '.voxconfig-dev.json');
+  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles');
 } else {
   exports.hubUrl = urlparse.parse(commandLineArgs.hubUrl || 'http://hub.postvox.net');
   exports.defaultInterchangeUrl = commandLineArgs.defaultInterchangeUrl || 'http://vanilla.postvox.net';
-  exports.dbDir = commandLineArgs.dbDir || path.join(homeDir, '.voxhistory');
-  exports.configFile = commandLineArgs.configFile || path.join(homeDir, '.voxconfig.json');
+  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles-dev');
 }
 
-exports.stderrLogsPath = path.join(exports.dbDir, 'vox.stderr');
+exports.stderrLogsPath = path.join(exports.profilesDir, 'vox.stderr');
 
 exports.noTTY = commandLineArgs.noTTY;

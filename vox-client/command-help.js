@@ -23,12 +23,12 @@ exports = module.exports = function(context, args) {
       log('and $HOME/.voxhistory/vox-<nickname>.db.  If you\'d like to customize those');
       log('paths:');
       log('');
-      log('    $ vox --configFile path/to/config.yaml --dbDir path/to/my/dir');
+      log('    $ vox --profilesDir path/to/profiles');
       log('');
       log('If you\'d like to see what the client is sending and receiving over the');
       log('network, set the DEBUG environment variable:');
       log('');
-      log('    $ DEBUG=\'vox:interchangeclient\' vox');
+      log('    $ DEBUG=\'vox:connection-manager\' vox');
       log('or');
       log('    $ DEBUG=\'vox:*\' vox');
       log('');

@@ -32,11 +32,11 @@ mkdirp.sync(argv.dbDir, 0700);
 
 var dbConfig = {
     dbFile: path.join(argv.dbDir, 'metadata.db'),
-    messageDbDir: path.join(argv.dbDir, 'messages.leveldb')
+    streamDbDir: path.join(argv.dbDir, 'messages.leveldb')
 };
 
 
-return interchangedb.OpenDb(dbConfig)
+return interchangedb.openDb(dbConfig)
   .then(function(db) {
     var hubClient = hubclient.HubClient(argv.hubUrl, db);
     return interchangeserver.CreateInterchangeServer(

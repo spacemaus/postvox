@@ -12,7 +12,7 @@ var P = require('bluebird');
 var urlparse = require('url');
 
 
-function ParseIfJson(resp, stuff) {
+function parseIfJson(resp, stuff) {
   try {
     // TODO JSON.parse blocks the main thread:
     return JSON.parse(stuff);
@@ -54,7 +54,7 @@ module.exports = exports = function(hubUrl) {
           })
           .on('end', function() {
             debug('Got response %s', path, respData);
-            respData = ParseIfJson(resp, respData);
+            respData = parseIfJson(resp, respData);
             if (resp.statusCode == 200) {
               resolve(respData);
             } else {
@@ -93,7 +93,7 @@ module.exports = exports = function(hubUrl) {
           })
           .on('end', function() {
             debug('Got response %s', path, respData);
-            respData = ParseIfJson(resp, respData);
+            respData = parseIfJson(resp, respData);
             if (resp.statusCode == 200) {
               resolve(respData);
             } else {

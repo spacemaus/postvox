@@ -15,10 +15,10 @@ var socketIo = require('socket.io');
  * service (InterchangeService): The service instance.
  * appServer (Express app server): The appServer to attach the sockets to.
  */
-exports.Listen = function(appServer, service) {
+exports.listen = function(appServer, service) {
   debug('Listening for connections');
   var io = socketIo(appServer);
-  io.sockets.on('connection', HandleConnection.bind(null, service));
+  io.sockets.on('connection', _handleConnection.bind(null, service));
   return io.sockets;
 }
 
@@ -28,7 +28,7 @@ exports.Listen = function(appServer, service) {
  *
  * Routes socket messages to the service's commandRouter.
  */
-function HandleConnection(service, socket) {
+function _handleConnection(service, socket) {
   debug('New socket %s from %s', socket.id, socket.conn.remoteAddress);
 
   var remoteAddress = socket.conn.remoteAddress;
@@ -40,16 +40,16 @@ function HandleConnection(service, socket) {
   context.db = service.db;
   context.hubClient = service.hubClient;
 
-  context.SetSessionId = function(sessionId) {
+  context.setSessionId = function(sessionId) {
     context.sessionId = sessionId;
-    service.SetSessionSocket(sessionId, socket);
+    service.setSessionSocket(sessionId, socket);
   }
 
-  context.UnsetSessionId = function() {
+  context.unsetSessionId = function() {
     if (!context.sessionId) {
       return;
     }
-    service.ClearSessionSocket(context.sessionId, socket);
+    service.clearSessionSocket(context.sessionId, socket);
     context.sessionId = null;
   }
 
@@ -57,24 +57,32 @@ function HandleConnection(service, socket) {
    * Pushes a message to connected interchange clients who are following the
    * given targets.
    */
-  context.TargetCast = service.TargetCast;
+  context.targetCast = service.targetCast;
 
   /**
    * Handles the VOX command.  A VOX command wraps a URL, HTTP method, and JSON
    * data payload, and it expects a JSON response.
    *
+   * @param method {String} The command's HTTP-like method.  E.g. "POST".
    * @param data.url {String} The URL of the command.  E.g.,
    *     "vox://<source>/threads/<threadId>".
-   * @param data.method {String} The command's HTTP-like method.  E.g. "POST".
    * @param data.payload {Object} The command's JSON payload.
    */
-  socket.on('VOX', function(data, replyFn) {
-    debug('VOX %s %s %s', socket.id, data.method, data.url, data.payload);
-    eyes.mark('sockets.VOX');
+  function handleSocketMessage(method, data, replyFn) {
+    debug('%s %s %s', socket.id, method, data.url, data.payload);
+    eyes.mark('sockets.' + method);
+    var url = data.url;
+    if (!url) {
+      replyFn({ status: 400, message: 'No URL given in request!' });
+      return;
+    }
+    if (url.indexOf('/') == -1) {
+      url += '/';  // Ensure that the URL can be routed.
+    }
     var req = {
         context: context,
-        method: data.method,
-        url: data.url,
+        method: method,
+        url: url,
         remoteAddress: remoteAddress,
         payload: data.payload
     };
@@ -86,42 +94,47 @@ function HandleConnection(service, socket) {
         json: function(reply) {
           replyFn(reply);
           replied = true;
-          debug('VOX reply %s %s %s', socket.id, data.method, data.url);
-          eyes.mark('sockets.VOX.status.200');
+          debug('%s reply %s %s', socket.id, method, data.url);
+          eyes.mark('sockets.' + method + '.status.200');
         },
         sendStatus: function(statusCode, message) {
           replyFn({ status: statusCode, message: message });
           replied = true;
-          debug('VOX reply %s %s %s', socket.id, data.method, data.url, statusCode);
-          eyes.mark('sockets.VOX.status.' + statusCode);
+          debug('%s reply %s %s', socket.id, method, data.url, statusCode);
+          eyes.mark('sockets.' + method + '.status.' + statusCode);
         }
     };
     service.commandRouter.handle(req, res, function(err) {
       if (err) {
-        console.error('Error handling %s %s:', data.method, data.url, err, err.stack);
+        console.error('Error handling %s %s:', method, data.url, err, err.stack);
         if (!replied) {
-          console.error('No reply sent for %s %s...sending 500 error.', data.method, data.url);
+          console.error('No reply sent for %s %s...sending 500 error.', method, data.url);
           res.sendStatus(500, 'Server error');
         }
       } else if (!replied) {
-        debug('No route found for %s %s...sending 404', data.method, data.url);
-        res.sendStatus(404, 'Not found');
+        debug('No route found for %s %s...sending 404', method, data.url);
+        res.sendStatus(404, 'Not found: ' + data.url);
       }
     });
-  });
+  }
+
+  socket.on('GET', handleSocketMessage.bind(null, 'GET'));
+  socket.on('POST', handleSocketMessage.bind(null, 'POST'));
+  socket.on('SUBSCRIBE', handleSocketMessage.bind(null, 'SUBSCRIBE'));
+  socket.on('UNSUBSCRIBE', handleSocketMessage.bind(null, 'UNSUBSCRIBE'));
 
   socket.on('disconnect', function(data) {
     debug('DISCONNECT %s', context.sessionId);
     eyes.dec('sockets.open');
     if (context.sessionId) {
       var now = Date.now();
-      context.db.SetSessionConnected({
+      context.db.setSessionConnected({
           sessionId: context.sessionId,
           isConnected: false,
           lastSeenAt: now
       });
       // TODO Handle errors.
-      context.UnsetSessionId();
+      context.unsetSessionId();
     }
   });
 }

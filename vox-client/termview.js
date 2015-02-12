@@ -3,8 +3,6 @@
  *
  * It's a thin wrapper around the readline module.  Adds support for bluebird
  * Promises.
- *
- * It has the same interface as fancyview.js, but is less fancy.
  */
 
 
@@ -45,7 +43,6 @@ exports.TermView = function() {
    */
   self.question = function(prompt) {
     return new P(function(resolve, reject) {
-      self.focusInput();
       rl.question(prompt, function(reply) {
         resolve(reply);
       });
@@ -64,50 +61,9 @@ exports.TermView = function() {
     console.log.apply(null, arguments);
   }
 
-  self.err = function() {
-    self.log.apply(null, arguments);
+  self.appendLine = function(val) {
+    self.log(val);
   }
-
-  self.showHelp = function(text) {
-    self.log(text)
-  }
-  self.hideHelp = function() {}
-
-  self.setModeLine = function() {}
-  self.setHelpLine = function() {}
-  self.scrollToEnd = function() {}
-  self.setInputColor = function() {}
-  self.render = function() {}
-
-  self.lightBlack = function(s) {
-    return colors.dim(s);
-  }
-
-  self.setInputLine = function(text) {
-    rl.line = text;
-    self.prompt();
-  }
-
-  var focused = 'main';
-
-  self.focusInput = function() {
-    focused = 'input';
-  }
-
-  self.focusMainBox = function() {
-    focused = 'main';
-  }
-
-  process.stdin.on('keypress', function(key) {
-    if (focused != 'input') {
-      rl.line = '';
-    }
-    self.emit(focused + '.key', key);
-  })
-
-  rl.on('line', function(text) {
-    self.emit('input.submit', text);
-  });
 
   rl.on('close', function() {
     process.exit(0);

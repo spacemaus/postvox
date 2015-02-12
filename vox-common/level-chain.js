@@ -1,3 +1,4 @@
+var Chain = require('./chain');
 var debug = require('debug')('vox:level-chain');
 var P = require('bluebird');
 
@@ -26,6 +27,7 @@ var LevelChain = module.exports = function(leveldb, options) {
   this.counterKeyPrefix += '\x00';
   this.counters = {};  // In-memory counters.
   this.operations = {};  // Pending operations.
+  this._chain = new Chain(this._loadCounter.bind(this));
 }
 
 
@@ -43,10 +45,9 @@ var LevelChain = module.exports = function(leveldb, options) {
 LevelChain.prototype.batch = function(key, batchFn) {
   var self = this;
 
-  // Returns a function that returns a promise that calls `batchFn()`.
-  function runOp() {
+  return this._chain.next(key, function(oldSeq) {
     return new P(function(resolve, reject) {
-      var seq = ++self.counters[key];
+      var seq = oldSeq + 1;
       var batch = self.leveldb.batch();
       batch.put(self.counterKeyPrefix + key, seq);
       batchFn(batch, seq);
@@ -54,70 +55,23 @@ LevelChain.prototype.batch = function(key, batchFn) {
         if (err) {
           reject(err);
         } else {
-          resolve();
+          resolve(seq);
         }
       });
     });
-  }
-
-  // See if we have any pending operations on the key.
-  var op = self.operations[key];
-  if (!op) {
-    // If we do, then the counter has already been loaded.  If not, then the
-    // first thing we need to do is ensure that the counter has been loaded.
-    op = self._loadCounter(key);
-  }
-
-  // We return the clientOp so that callers can chain off of just the promise
-  // they care about.  But we store the chainedOp so that operations happen in
-  // the correct order.
-  var clientOp;
-
-  // If an operation is pending (either a _loadCounter() or a caller's op), then
-  // we need to chain the new operation behind the current one.
-  if (op && op.isPending()) {
-    clientOp = op.then(runOp);
-  } else {
-    // No pending operation means that we don't have to wait.
-    clientOp = runOp();
-  }
-
-  var chainedOp = clientOp
-    .catch(function(err) {
-      debug('Error in chained op', err);
-      // The operation failed, so roll back the counter.
-      self.counters[key]--;
-    })
-    .finally(function() {
-      // If no operation has chained off of this one, then we may delete it
-      // from the set of pending ops.
-      if (chainedOp == self.operations[key]) {
-        delete self.operations[key];
-      }
-    });
-  self.operations[key] = chainedOp;
-  return clientOp;
+  })
 }
 
 
 /**
- * Loads the counter from the database.  If the counter is already in memory,
- * then returns null.  Otherwise, returns a Promise that will be fulfilled when
- * the counter is in memory.
+ * Loads the counter from the database.
  */
 LevelChain.prototype._loadCounter = function(key) {
   var self = this;
-  var seq = self.counters[key];
-  if (seq !== undefined) {
-    return null;
-  }
   return self.leveldb.getAsync(self.counterKeyPrefix + key)
-    .then(function(v) {
-      self.counters[key] = v;
-    })
     .catch(function(err) {
       if (err.notFound) {
-        self.counters[key] = 0;
+        return 0;
       } else {
         throw err;
       }

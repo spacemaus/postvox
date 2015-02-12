@@ -18,10 +18,20 @@ exports.FancyView = function() {
       height: '100%'
   });
 
-  self.mainContentBox = blessed.box({
+  self.titleLine = blessed.box({
       parent: self.rootBox,
       top: 0,
-      height: self.screen.height - 3,
+      height: 1,
+      left: 0,
+      width: '100%',
+      bg: 'white',
+      fg: 'black'
+  })
+
+  self.mainContentBox = blessed.box({
+      parent: self.rootBox,
+      top: 1,
+      height: self.screen.height - 4,
       left: 0,
       width: '100%',
       align: 'left',
@@ -61,7 +71,7 @@ exports.FancyView = function() {
       fg: 'black',
       tags: true,
       content: 'connecting...'
-  })
+  });
 
   self.helpLine = blessed.box({
       parent: self.rootBox,
@@ -73,7 +83,7 @@ exports.FancyView = function() {
       fg: 'black',
       tags: true,
       content: ''
-  })
+  });
 
   self.inputBox = blessed.textbox({
       parent: self.rootBox,
@@ -97,7 +107,7 @@ exports.FancyView = function() {
     self.inputBox.top = self.screen.height - self.inputBox.height;
     self.helpLine.top = self.inputBox.top - self.helpLine.height;
     self.modeLine.top = self.helpLine.top - self.modeLine.height;
-    self.mainContentBox.height = self.modeLine.top;
+    self.mainContentBox.height = self.modeLine.top - self.titleLine.height;
 
     self.inputPrompt.width = self.inputPrompt.content.length;
     self.inputBox.left = self.inputPrompt.getText().length;
@@ -132,49 +142,50 @@ exports.FancyView = function() {
     self.inputBox.clearValue();
   });
 
-  self.mainContentBox.on('keypress', function(key) {
-    self.emit('main.key', key);
-    var cb = self.mainContentBox;
-    if (key == ' ') {
+  self.mainContentBox.on('keypress', function(char, key) {
+    self.emit('main.key', char, key);
+    var box = self.mainContentBox;
+    if (char == ' ' || key.name == 'pagedown') {
       var lines = self.mainContentBox.height;
-      cb.scroll(lines);
-      cb.down(lines); // Probably broken with long lines.
-    } else if (key == 'b') {
+      box.scroll(lines + 1);
+      box.down(lines); // Probably broken with long lines.
+    } else if (char == 'b' || key.name == 'pageup') {
       var lines = self.mainContentBox.height;
-      cb.scroll(-lines);
-      cb.up(lines);
-    } else if (key == 'g') {
-      cb.setScrollPerc(0);
-      cb.select(0);
-    } else if (key == 'G') {
-      cb.setScrollPerc(100);
-      cb.select(cb.children.length - 1);
+      var amount = -lines - 1;
+      box.scroll(amount);
+      box.up(lines);
+      if (box.getScroll() - amount <= 0) {
+        self.emit('main.underscroll');
+      }
+    } else if (char == 'g' || key.name == 'home') {
+      box.setScrollPerc(0);
+      box.select(0);
+    } else if (char == 'G' || key.name == 'end') {
+      box.setScrollPerc(100);
+      box.select(box.children.length - 1);
     }
-    updateScroll();
+    self.screen.render();
   });
 
   self.mainContentBox.key(['down', 'j'], function() {
-    var cb = self.mainContentBox;
-    cb.setScroll(cb.getScroll() + 1);
-    cb.down(1);
-    updateScroll();
+    var box = self.mainContentBox;
+    box.setScroll(box.getScroll() + 1);
+    box.down(1);
+    self.screen.render();
   })
 
   self.mainContentBox.key(['up', 'k'], function() {
-    var cb = self.mainContentBox;
-    cb.setScroll(cb.getScroll() - 1);
-    cb.up(1);
-    updateScroll();
+    var box = self.mainContentBox;
+    var underscroll = box.getScroll() == 0;
+    box.setScroll(box.getScroll() - 1);
+    box.up(1);
+    self.screen.render();
+    if (underscroll) {
+      self.emit('main.underscroll');
+    }
   })
 
-  function updateScroll() {
-    self.screen.render();
-    self.scrollFollow = self.mainContentBox.selected == self.mainContentBox.children.length - 1;
-  }
-
-  self.scrollFollow = true;
-
-  self.Attach = function() {
+  self.attach = function() {
     consoleRedirect.redirectConsoleOutput();
     render();
   }
@@ -191,28 +202,59 @@ exports.FancyView = function() {
   }
 
   self.log = function(var_args) {
-    var val = util.format.apply(null, arguments);
-    self.mainContentBox.addItem(val);
-    self.screen.render(); // Render first so scroll updating works.
-    if (self.scrollFollow) {
-      self.mainContentBox.select(self.mainContentBox.children.length - 1);
-      self.mainContentBox.setScrollPerc(100);
-    } else {
-      // TODO Only flash when new line is offscreen.
-      self.modeLine.style.bg = 'yellow';
+    self.appendLine(util.format.apply(null, arguments));
+  }
+
+  self.clearLines = function() {
+    self.mainContentBox.clearItems();
+  }
+
+  self.appendLine = function(val, itemKey, itemData) {
+    self.mainContentBox.addItem(val, itemKey, itemData);
+    // TODO Only flash when new line is offscreen.
+    self.modeLine.style.bg = 'yellow';
+    setTimeout(function() {
+      self.modeLine.style.bg = 'white';
       self.screen.render();
-      setTimeout(function() {
-        self.modeLine.style.bg = 'white';
-        self.screen.render();
-      }, 300);
-    }
+    }, 300);
     self.screen.render();
   }
 
+  self.removeLine = function(itemKey) {
+    self.mainContentBox.removeItem(itemKey);
+  }
+
+  self.getItem = function(itemKey) {
+    return self.mainContentBox.getItem(itemKey);
+  }
+
+  self.selectItem = function(itemKey) {
+    self.mainContentBox.selectItem(itemKey);
+  }
+
+  self.getSelectedItem = function() {
+    return self.mainContentBox.getSelectedItem();
+  }
+
+  self.getLine = function(n) {
+    self.mainContentBox.children[n];
+  }
+
+  self.selectLine = function(n) {
+    self.mainContentBox.select(n);
+  }
+
+  self.scrollToTop = function() {
+    self.mainContentBox.setScrollPerc(0);
+  }
+
   self.scrollToEnd = function() {
-    self.mainContentBox.select(self.mainContentBox.children.length - 1);
-    self.mainContentBox.setScrollPerc(100);
-    updateScroll();
+    var box = self.mainContentBox;
+    var item = box.getSelectedItem();
+    if (!item || box.getScrollHeight() - box.height <= item.rtop) {
+      box.setScrollPerc(100);
+      self.screen.render();
+    }
   }
 
   self.question = function(question) {
@@ -228,21 +270,25 @@ exports.FancyView = function() {
     render();
   }
 
-  self.setPrompt = function(prompt) {
-    self.inputPrompt.setContent(prompt);
+  self.setPrompt = function(var_args) {
+    self.inputPrompt.setContent(util.format.apply(util, arguments));
   }
 
-  self.setModeLine = function(text) {
-    self.modeLine.content = text;
+  self.setTitleLine = function(var_args) {
+    self.titleLine.content = util.format.apply(util, arguments);
   }
 
-  self.setHelpLine = function(text) {
-    self.helpLine.content = text;
+  self.setModeLine = function(var_args) {
+    self.modeLine.content = util.format.apply(util, arguments);
   }
 
-  self.setInputLine = function(line) {
+  self.setHelpLine = function(var_args) {
+    self.helpLine.content = util.format.apply(util, arguments);
+  }
+
+  self.setInputLine = function(var_args) {
     self.inputBox.clearValue();
-    self.inputBox.setValue(line);
+    self.inputBox.setValue(util.format.apply(util, arguments));
   }
 
   self.focusInput = function() {
@@ -262,6 +308,14 @@ exports.FancyView = function() {
     return '{light-black-fg}' + s + '{/light-black-fg}';
   }
 
+  self.columns = function() {
+    return self.screen.width;
+  }
+
+  self.mainRows = function() {
+    return self.mainContentBox.height;
+  }
+
   return self;
 }
 
@@ -273,38 +327,85 @@ exports.FancyView = function() {
 function attachSelectionMethods(box) {
   box.selected = 0;
 
-  var lines = 0;
+  var nextTop = 0;
+  var items = {};
 
   box.layout = function() {
-    lines = 0;
+    nextTop = 1;
     box.children.forEach(function(child) {
-      child.top = lines;
+      child.top = nextTop;
       child.height = child.getScreenLines().length;
-      lines += child.height;
+      nextTop += child.height;
     })
   }
 
-  box.addItem = function(text) {
+  box.addItem = function(text, itemKey, itemData) {
     var node = blessed.text({
-        width: '100%',
-        top: lines,
+        left: 0,
+        right: 0,
+        top: nextTop,
         height: 1,
         tags: true,
         content: text
     });
+    node.itemData = itemData;
+    items[itemKey] = node;
     box.append(node);
     node.height = node.getScreenLines().length;
-    lines += node.height;
+    nextTop += node.height;
+  }
+
+  box.getItem = function(itemKey) {
+    return items[itemKey];
+  }
+
+  box.selectItem = function(itemKey) {
+    var item = box.getItem(itemKey);
+    if (!item) {
+      return;
+    }
+    var i = box.children.indexOf(item);
+    if (i == -1) {
+      return;
+    }
+    box.select(i);
+  }
+
+  box.removeItem = function(itemKey) {
+    var item = items[itemKey];
+    if (!item) {
+      return;
+    }
+    delete items[itemKey];
+    item.detach();
+    box.layout();
+  }
+
+  box.clearItems = function() {
+    box.children.slice().forEach(function(child) {
+      child.detach();
+    });
+    box.selected = -1;
+    nextTop = 0;
+    items = {};
   }
 
   box.up = function(n) {
-    n = n === undefined ? 1 : n;
-    box.select(box.selected - n);
+    if (box.selected == -1) {
+      box.select(box.children.length - 1);
+    } else {
+      n = n === undefined ? 1 : n;
+      box.select(box.selected - n);
+    }
   }
 
   box.down = function(n) {
-    n = n === undefined ? 1 : n;
-    box.select(box.selected + n);
+    if (box.selected == -1) {
+      box.select(box.children.length - 1);
+    } else {
+      n = n === undefined ? 1 : n;
+      box.select(box.selected + n);
+    }
   }
 
   box.select = function(n) {
@@ -317,13 +418,14 @@ function attachSelectionMethods(box) {
     highlight(n, true);
   }
 
+  box.getSelectedItem = function() {
+    return box.children[box.selected];
+  }
+
   function highlight(n, on) {
     var item = box.children[n];
     if (!item) {
       return;
-    }
-    if (n == box.children.length - 1) {
-      on = false;
     }
     item.style.inverse = on;
   }

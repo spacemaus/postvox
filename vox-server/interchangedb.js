@@ -8,13 +8,15 @@ var debug = require('debug')('vox:interchangedb');
 var debugSql = require('debug')('vox:interchangedb:sql');
 var errors = require('vox-common/errors');
 var eyes = require('vox-common/eyes');
-var LevelChain = require('./level-chain');
+var LevelChain = require('vox-common/level-chain');
+var LevelIndex = require('vox-common/level-index');
 var levelup = require('level');
 var lruCache = require('lru-cache');
 var P = require('bluebird');
 var S = require('sequelize');
 var TargetSessionCache = require('./target-session-cache');
 var util = require('util');
+var voxurl = require('vox-common/voxurl');
 
 
 var sqlLogging = function(v) {
@@ -23,16 +25,12 @@ var sqlLogging = function(v) {
 
 
 /**
- * Sets the `syncedAt` timestamp, and `updatedAt` and `createdAt`, if they are
- * not set.
+ * Sets the `syncedAt` and `createdAt` timestamps, if they are not set.
  */
-function EnsureTimestamps(columns, allowSyncedAt) {
+function ensureTimestamps(columns, allowSyncedAt) {
   var now = Date.now();
   if (!allowSyncedAt || !columns.syncedAt) {
     columns.syncedAt = now;
-  }
-  if (!columns.updatedAt) {
-    columns.updatedAt = now;
   }
   if (!columns.createdAt) {
     // Take the value from the client, if present:
@@ -41,30 +39,37 @@ function EnsureTimestamps(columns, allowSyncedAt) {
 }
 
 
+var DEFAULT_MIN_TARGET_SESSION_CACHE_REFRESH_MS = 10 * 1e3; // Refresh at most every 10 seconds.
+
+
 /**
  * Opens or creates a database for the given dbTag.
  *
  * @param {Object} config
  * @param {String} config.dbFile The path to the local database file.
- * @param {String} config.messageDbDir The path to the local message database
+ * @param {String} config.streamDbDir The path to the local message database
  *     directory.
+ * @param {int} [config.minTargetCacheRefreshMs] The minimum number of
+ *     milliseconds between refreshes of the target-to-sessionId cache.
+ *     Defaults to 10 seconds.
  *
  * @returns {Promise<Object>} a Promise for a database object.
  */
-exports.OpenDb = function(config) {
+exports.openDb = function(config) {
   if (!config.dbFile) {
     throw new Error('Must specify config.dbFile');
   }
-  if (!config.messageDbDir) {
-    throw new Error('Must specify config.messageDbDir');
+  if (!config.streamDbDir) {
+    throw new Error('Must specify config.streamDbDir');
   }
 
   var self = {};
   self.dbFile = config.dbFile;
-  self.messageDbDir = config.messageDbDir;
+  self.streamDbDir = config.streamDbDir;
+  self.minTargetCacheRefreshMs = config.minTargetCacheRefreshMs === undefined ? DEFAULT_MIN_TARGET_SESSION_CACHE_REFRESH_MS : config.minTargetCacheRefreshMs;
 
   debug('Using dbFile', self.dbFile);
-  debug('Using messageDbDir', self.messageDbDir);
+  debug('Using streamDbDir', self.streamDbDir);
 
   var db = new S(null, null, null, {
       dialect: 'sqlite',
@@ -72,7 +77,7 @@ exports.OpenDb = function(config) {
       logging: sqlLogging
   });
 
-  var leveldb = levelup(self.messageDbDir, { valueEncoding: 'json' });
+  var leveldb = levelup(self.streamDbDir, { valueEncoding: 'json' });
   P.promisifyAll(leveldb);
 
   self.sequelize = db;
@@ -104,8 +109,8 @@ exports.OpenDb = function(config) {
       paranoid: true // include deletedAt column
   });
 
-  self.GetUserProfile = function(nick, opt_updatedBefore) {
-    eyes.mark('interchangedb.GetUserProfile');
+  self.getUserProfile = function(nick, opt_updatedBefore) {
+    eyes.mark('interchangedb.getUserProfile');
     var where = { nick: nick };
     if (opt_updatedBefore) {
       where.updatedAt = { lt: opt_updatedBefore };
@@ -116,15 +121,15 @@ exports.OpenDb = function(config) {
     });
   }
 
-  self.SetUserProfile = function(columns) {
-    eyes.mark('interchangedb.SetUserProfile');
-    EnsureTimestamps(columns);
+  self.saveUserProfile = function(columns) {
+    eyes.mark('interchangedb.saveUserProfile');
+    ensureTimestamps(columns);
     return UserProfile.create(columns)
       .catch(S.UniqueConstraintError, function(err) {
         // Ignore.
         debug('Ignoring duplicate insert for UserProfile: %s', columns.nick);
-        eyes.mark('interchangedb.SetUserProfile.duplicate');
-        return self.GetUserProfile(columns.nick);
+        eyes.mark('interchangedb.saveUserProfile.duplicate');
+        return self.getUserProfile(columns.nick);
       });
   }
 
@@ -148,15 +153,14 @@ exports.OpenDb = function(config) {
       'connectedAtDbSeq': S.BIGINT
   });
 
-  self.FindSession = function(sessionId) {
+  self.findSession = function(sessionId) {
     return Session.find({ where: { sessionId: sessionId } });
   }
 
   var targetSessionCache = new TargetSessionCache(1e5) // 1e5 * 36 bytes per UUID ~= 3.6MB
-  var MIN_TARGET_SESSION_CACHE_REFRESH_MS = 10 * 1e3; // Refresh at most every 10 seconds.
 
-  self.NewSession = function(columns) {
-    eyes.mark('interchangedb.NewSession');
+  self.createSession = function(columns) {
+    eyes.mark('interchangedb.createSession');
     if (columns.isConnected) {
       // Not portable, but we just need any number that is strictly increasing
       // from the DB's point of view, so we can (a) tell given two query result
@@ -167,7 +171,7 @@ exports.OpenDb = function(config) {
     return Session.create(columns);
   }
 
-  self.SetSessionConnected = function(columns) {
+  self.setSessionConnected = function(columns) {
     if (columns.isConnected) {
       columns.connectedAtDbSeq = S.fn('total_changes');
     }
@@ -179,8 +183,8 @@ exports.OpenDb = function(config) {
    * Calls callback(id) for each session ID that is connected and has an active
    * route for the given URL.
    */
-  self.ForTargetSessionIds = function(url, callback, opt_forceRefresh) {
-    eyes.mark('interchangedb.ForTargetSessionIds');
+  self.forTargetSessionIds = function(url, callback, opt_forceRefresh) {
+    eyes.mark('interchangedb.forTargetSessionIds');
 
     var cached = targetSessionCache.get(url);
     var stopTimer;
@@ -188,7 +192,7 @@ exports.OpenDb = function(config) {
 
     // Check if the session ID list is cached:
     if (cached) {
-      eyes.mark('interchangedb.ForTargetSessionIds.cached');
+      eyes.mark('interchangedb.forTargetSessionIds.cached');
 
       // It is cached, so start calling those callbacks.
       cached.cooperativeForEach(callback);
@@ -196,21 +200,21 @@ exports.OpenDb = function(config) {
       // See if we need to refresh the cache entry.  If there's a pending
       // promise, we'll chain off of it.  Otherwise, we check to see if it's
       // been long enough since the last refresh.
-      var canRefresh = opt_forceRefresh || ((Date.now() - cached.lastRefreshTime) > MIN_TARGET_SESSION_CACHE_REFRESH_MS);
+      var canRefresh = opt_forceRefresh || ((Date.now() - cached.lastRefreshTime) > self.minTargetCacheRefreshMs);
       if ((!cached.promise || !cached.promise.isPending()) && canRefresh) {
-        var stopTimer = eyes.start('interchangedb.ForTargetSessionIds.refresh_cache');
+        var stopTimer = eyes.start('interchangedb.forTargetSessionIds.refresh_cache');
         debug('Refreshing cache for %s', url);
         // We query for any sessions that have connected since the cache was
         // last populated.
-        cached.promise = queryForTargetSessions(url, cached.dbSeq);
+        cached.promise = _queryForTargetSessions(url, cached.dbSeq);
         originalDbSeq = cached.dbSeq;
       }
     } else {
       // It's not cached, so we need to initiate a full fetch.
       debug('Populating cache for %s', url);
       cached = targetSessionCache.set(url, [], 0);
-      var stopTimer = eyes.start('interchangedb.ForTargetSessionIds.uncached');
-      cached.promise = queryForTargetSessions(url);
+      var stopTimer = eyes.start('interchangedb.forTargetSessionIds.uncached');
+      cached.promise = _queryForTargetSessions(url);
       originalDbSeq = cached.dbSeq;
     }
 
@@ -233,10 +237,10 @@ exports.OpenDb = function(config) {
           cached.dbSeq = Math.max(cached.dbSeq, results.dbSeq);
           cached.promise = null;
         } else {
-          eyes.mark('interchangedb.ForTargetSessionIds.cache_preempted_during_refresh');
+          eyes.mark('interchangedb.forTargetSessionIds.cache_preempted_during_refresh');
         }
       } else {
-        eyes.mark('interchangedb.ForTargetSessionIds.cache_chained');
+        eyes.mark('interchangedb.forTargetSessionIds.cache_chained');
       }
       if (results.sessionIds.length) {
         debug('Adding %d IDs to cached list for %s', results.sessionIds.length, url);
@@ -253,7 +257,7 @@ exports.OpenDb = function(config) {
    * @param {String} url The routeUrl to query for.
    * @param {Number} [minDbSeq] The minimum connectedAtDbSeq to query for.
    */
-  function queryForTargetSessions(url, minDbSeq) {
+  function _queryForTargetSessions(url, minDbSeq) {
     var where = { isConnected: true };
     if (minDbSeq) {
       where.connectedAtDbSeq = { gt: minDbSeq };
@@ -287,7 +291,7 @@ exports.OpenDb = function(config) {
   /**
    * Removes the sessionId from the cached list for the given URL.
    */
-  self.UncacheTargetSessionId = function(url, sessionId) {
+  self.uncacheTargetSessionId = function(url, sessionId) {
     var cached = targetSessionCache.peek(url);
     if (!cached) {
       return;
@@ -332,8 +336,8 @@ exports.OpenDb = function(config) {
   Route.belongsTo(Session, { foreignKey: 'sessionId' });
   Session.hasMany(Route, { foreignKey: 'sessionId' });
 
-  self.InsertRoute = function(columns) {
-    EnsureTimestamps(columns);
+  self.insertRoute = function(columns) {
+    ensureTimestamps(columns);
     var sessionId = columns.sessionId;
     var url = columns.routeUrl;
     var cached = targetSessionCache.get(url);
@@ -353,232 +357,61 @@ exports.OpenDb = function(config) {
   }
 
 
-  //////////////
-  // Messages //
-  //////////////
-
-  // User-generated messages.
-  //
-  // Unlike the other objects, Messages are stored in LevelDB.
+  /////////////
+  // Streams //
+  /////////////
 
   /*
-   * Message keys/indexes
+   * Stream keys/indexes:
    *
    * Since LevelDB is essentially just a sorted hashtable, we need to implement
    * our own indexing for fast scans.
-   *
-   * Each message can write to the following keys in LevelDB.  ('/' stands for
-   * the path separator '\x00').
-   *
-   * - Message:
-   *     <messageUrl>
-   *
-   * - By source:
-   *     s/<source>/-/<syncedAt DESC>/<messageUrl>
-   *
-   * - By sequence number:
-   *     s/<source>/seq/<seq ASC>/<messageUrl>
-   *
-   * - By author:
-   *     s/<source>/a/<author>/<syncedAt DESC>/<messageUrl>
-   *
-   * - By thread:
-   *     s/<source>/t/<thread>/<syncedAt DESC>/<messageUrl>
-   *
-   * - By replyTo:
-   *     s/<source>/rt/<replyTo>/<syncedAt DESC>/<messageUrl>
-   *
-   * To scan for all the messages from a source/author, we just set the start
-   * and end keys to:
-   *
-   *     start = s/spacemaus/a/landcatt/
-   *     end = s/spacemaus/a/landcatt/\xff
-   *
-   * To scan for messages between `syncedBefore` and `syncedAfter`, we set the
-   * start and end keys to:
-   *
-   *     start = s/spacemaus/a/landcatt/<syncedBefore DESC>/
-   *     end = s/spacemaus/a/landcatt/<syncedAfter DESC>/\xff
-   *
-   * Note that in all cases, the end key's terminator '\xff' comes _after_ the
-   * separator '\x00'.
    */
-  self.InsertMessage = function(columns, opt_allowSyncedAt) {
-    // TODO Prevent overwrites.
-    var stopTimer = eyes.start('interchangedb.InsertMessage');
-    var messageUrl = columns.messageUrl;
-    return levelChain.batch(columns.source, function(batch, seq) {
-        EnsureTimestamps(columns, opt_allowSyncedAt);
-        columns.seq = seq;
-        var prefix = 's\x00' + columns.source + '\x00';
-        var descSuffix = '\x00' + ToDesc(columns.syncedAt) + '\x00' + messageUrl;
-        batch
-          .put(messageUrl, columns)
-          .put(prefix + '-' + descSuffix, '')
-          .put(prefix + 'seq\x00' + ToAsc(seq) + '\x00' + messageUrl, '')
-          .put(prefix + 'a\x00' + columns.author + descSuffix, '');
-        if (columns.thread) {
-          batch.put(prefix + 't\x00' + columns.thread + descSuffix, '')
-        }
-        if (columns.replyTo) {
-          batch.put(prefix + 'rt\x00' + columns.replyTo + descSuffix, '')
-        }
+   self._stanzaIndex = new LevelIndex(
+      voxurl.getStanzaUrl,
+      [['stream', 's'], ['seq', 'seq', LevelIndex.toAsc]],
+      [['stream', 's'], ['nick', 'n'], ['seq', 'seq', LevelIndex.toAsc]],
+      [['stream', 's'], ['thread', 't'], ['seq', 'seq', LevelIndex.toAsc]],
+      [['stream', 's'], ['replyTo', 'rt'], ['seq', 'seq', LevelIndex.toAsc]],
+      [['stream', 's'], ['opSeq', 'opSeq'], ['seq', 'seq', LevelIndex.toAsc]])
+
+  self.appendStanza = function(stanza, opt_allowSyncedAt) {
+    var stopTimer = eyes.start('interchangedb.appendStanza');
+    return levelChain.batch(stanza.stream, function(batch, seq) {
+        ensureTimestamps(stanza, opt_allowSyncedAt);
+        stanza.seq = seq;
+        self._stanzaIndex.put(batch, stanza);
       })
       .then(stopTimer)
-      .return(columns);
+      .return(stanza);
   }
 
-  self.GetMessage = function(messageUrl) {
-    var stopTimer = eyes.start('interchangedb.GetMessage');
-    return leveldb.getAsync(messageUrl).finally(stopTimer);
+  self.getStanza = function(stanzaUrl) {
+    var stopTimer = eyes.start('interchangedb.getStanza');
+    return leveldb.getAsync(stanzaUrl).finally(stopTimer);
   }
 
   /**
-   * Lists messages in reverse chronological order.
+   * Lists stanzas in sequential order.
    *
    * @param {Object} options
-   * @param {String} options.source Filter by message source.
-   * @param {String} [options.author] Filter by message author.
-   * @param {String} [options.thread] Filter by message thread.
-   * @param {String} [options.replyTo] Filter by message replyTo.
-   * @param {int} options.limit The max number of messages to return.
-   * @param {int} [options.syncedBefore] Fetch messages synced at or before this
-   *     timestamp (in millis).
-   * @param {int} [options.syncedAfter] Fetch messages synced at or after this
-   *     timestamp (in millis).
+   * @param {String} options.stream Filter by stanza stream.  Required.
+   * @param {int} options.limit The max number of stanzas to return.
+   * @param {String} [options.nick] Filter by stanza author.
+   * @param {String} [options.thread] Filter by stanza thread.
+   * @param {String} [options.replyTo] Filter by stanza replyTo.
+   * @param {String} [options.opSeq] Filter by stanza opSeq.
+   * @param {int} [options.seqStart] Fetch stanzas starting from this seq value.
+   * @param {int} [options.seqLimit] Fetch stanzas up to this seq value.
+   * @param {bool} [options.reverse] Fetch in reverse order.
    */
-  self.ListMessages = function(options) {
-    var stopTimer = eyes.start('interchangedb.ListMessages');
-    var prefix = 's\x00' + options.source + '\x00';
-    if (options.author) {
-      prefix += 'a\x00' + options.author;
-    } else if (options.thread) {
-      prefix += 't\x00' + options.thread;
-    } else if (options.replyTo) {
-      prefix += 'rt\x00' + options.replyTo;
-    } else if (options.seqAfter) {
-      prefix += 'seq'
-    } else {
-      prefix += '-';
-    }
-    prefix += '\x00';
-    var startKey = prefix;
-    if (options.seqAfter) {
-      startKey += ToAsc(options.seqAfter);
-    } else if (options.syncedBefore) {
-      startKey += ToDesc(options.syncedBefore) + '\x00';
-    }
-    var endKey;
-    if (options.syncedAfter) {
-      endKey = prefix + ToDesc(options.syncedAfter) + '\x00\xff';
-    } else {
-      endKey = prefix + '\xff';
-    }
-    return ScanIndex(leveldb, {
-        gte: startKey,
-        lte: endKey,
-        limit: options.limit
-    })
-    .then(function(messages) {
-      stopTimer(messages.length)
-      return messages;
-    });
-  }
-
-
-  ////////////////////////
-  // User subscriptions //
-  ////////////////////////
-
-  // This stores the subscriptions we know about.
-
-  var Subscription = db.define('Subscription', {
-      'nick': {
-          type: S.STRING,
-          primaryKey: true,
-      },
-      'subscriptionUrl': {
-          type: S.STRING(510),
-          primaryKey: true,
-      },
-      'weight'   : S.INTEGER,
-      'createdAt': S.BIGINT,
-      'updatedAt': S.BIGINT,
-      'deletedAt': S.BIGINT,
-      'syncedAt' : S.BIGINT,
-      'sig'      : S.STRING
-  }, {
-      timestamps: false,
-      paranoid: true // include deletedAt column
-  });
-
-  self.InsertSubscription = function(columns) {
-    eyes.mark('interchangedb.InsertSubscription');
-    EnsureTimestamps(columns);
-    return Subscription.create(columns)
-      .catch(S.UniqueConstraintError, function(err) {
-        throw new errors.ConstraintError(columns.nick + ':' + columns.updatedAt);
+  self.listStanzas = function(options) {
+    var stopTimer = eyes.start('interchangedb.listStanzas');
+    return self._stanzaIndex.scan(leveldb, options)
+      .then(function(messages) {
+        stopTimer(messages.length)
+        return messages;
       });
-  }
-
-  self.ListSubscriptions = function(options) {
-    var stopTimer = eyes.start('interchangedb.ListSubscriptions');
-    var spec = MakeListSpec(options);
-    spec.where.nick = options.nick;
-    spec.where.weight = { gt: 0 };
-    return Subscription.findAll(spec).finally(stopTimer);
-  }
-
-  self.ListSubscribersByUrl = function(options) {
-    var stopTimer = eyes.start('interchangedb.ListSubscribersByUrl');
-    var spec = MakeListSpec(options);
-    spec.where.subscriptionUrl = options.subscriptionUrl;
-    spec.where.weight = { gt: 0 };
-    return Subscription.findAll(spec).finally(stopTimer);
-  }
-
-  self.CountSubscribersByUrl = function(subscriptionUrl) {
-    var stopTimer = eyes.start('interchangedb.CountSubscribersByUrl');
-    return Subscription.count({ where: {
-        subscriptionUrl: subscriptionUrl,
-        weight: { gt: 0 }
-    }})
-    .finally(stopTimer);
-  }
-
-
-  ///////////////////
-  // User statuses //
-  ///////////////////
-
-  var UserStatus = db.define('UserStatus', {
-      'nick': {
-          type: S.STRING,
-          primaryKey: true
-      },
-      'statusText': S.STRING,
-      'createdAt' : S.BIGINT,
-      'updatedAt' : S.BIGINT,
-      'deletedAt' : S.BIGINT,
-      'syncedAt'  : S.BIGINT,
-      'sig'       : S.STRING
-  }, {
-      timestamps: false,
-      paranoid: true // include deletedAt column
-  });
-
-  Subscription.hasOne(UserStatus, { foreignKey: 'nick' });
-
-  self.SetUserStatus = function(columns) {
-    EnsureTimestamps(columns);
-    return UserStatus.create(columns)
-      .catch(S.UniqueConstraintError, function(err) {
-        throw new errors.ConstraintError(columns.nick + ':' + columns.updatedAt);
-      });
-  }
-
-  self.GetUserStatus = function(nick) {
-    return UserStatus.find({ where: { nick: nick } });
   }
 
 
@@ -586,13 +419,13 @@ exports.OpenDb = function(config) {
   // Database Triggers //
   ///////////////////////
 
-  function MatchPrimaryKeys(model) {
+  function matchPrimaryKeys(model) {
     return model.primaryKeyAttributes.map(
         function(name) { return util.format('%s = NEW.%s', name, name)})
         .join(' AND ');
   }
 
-  function CreateDeleteOlderRowsTrigger(model) {
+  function createDeleteOlderRowsTrigger(model) {
     var tableName = model.tableName;
     var triggerName = 'deleteOlderRowsBeforeInsert_' + tableName;
     return P.all([
@@ -602,7 +435,7 @@ exports.OpenDb = function(config) {
             'FOR EACH ROW BEGIN ' +
                 'DELETE FROM %s WHERE %s AND updatedAt <= NEW.updatedAt;' +
             'END',
-            triggerName, tableName, tableName, MatchPrimaryKeys(model)))
+            triggerName, tableName, tableName, matchPrimaryKeys(model)))
     ]);
   }
 
@@ -610,7 +443,7 @@ exports.OpenDb = function(config) {
   // Misc //
   //////////
 
-  self.Close = function() {
+  self.close = function() {
     db.close();
     leveldb.close();
   }
@@ -618,128 +451,10 @@ exports.OpenDb = function(config) {
   return db.sync()
     .then(function() {
       return P.all([
-          CreateDeleteOlderRowsTrigger(Route),
-          CreateDeleteOlderRowsTrigger(Subscription),
-          CreateDeleteOlderRowsTrigger(UserStatus),
+          createDeleteOlderRowsTrigger(Route),
           Session.update({ isConnected: false }, { where: {} })
       ]);
     })
     .return(self);
 }
 
-
-/**
- * For queries that have the typical limit, offset, syncedAfter options.
- */
-function MakeListSpec(options) {
-  var where = {};
-  var order;
-  if (options.syncedAfter) {
-    where.syncedAt = { gt: options.syncedAfter };
-    order = 'syncedAt';
-  } else {
-    order = 'syncedAt DESC';
-  }
-  return {
-      where: where,
-      order: order,
-      limit: options.limit,
-      offset: options.offset
-  };
-}
-
-
-/**
- * Starts a LevelDB scan and returns a Promise for the list of results.
- *
- * @param {LevelDB} leveldb The DB to scan.
- * @param {Object} options An options object passed verbatim to
- *     leveldb.createReadStream().
- * @return {Promise<Object[]>} The scan results.
- */
-function Scan(leveldb, options) {
-  return new P(function(resolve, reject) {
-    var datas = [];
-    var resolved = false;
-    function fin() {
-      if (resolved) {
-        return;
-      }
-      resolve(P.all(datas));
-      resolved = true;
-    }
-    leveldb.createReadStream(options)
-      .on('data', function(data) {
-        datas.push(data);
-      })
-      .on('close', fin)
-      .on('end', fin)
-      .on('error', function(err) {
-        reject(err);
-      })
-  });
-}
-
-
-/**
- * Starts a LevelDB index scan and returns a Promise for the list of results.
- *
- * @param {LevelDB} leveldb The DB to scan.
- * @param {Object} options An options object passed verbatim to
- *     leveldb.createKeyStream().
- * @return {Promise<Object[]>} The scan results.
- */
-function ScanIndex(leveldb, options) {
-  return new P(function(resolve, reject) {
-    var datas = [];
-    var resolved = false;
-    function fin() {
-      if (resolved) {
-        return;
-      }
-      resolve(P.all(datas));
-      resolved = true;
-    }
-    leveldb.createKeyStream(options)
-      .on('data', function(data) {
-        var i = data.lastIndexOf('\x00');
-        var key = data.substr(i + 1);
-        datas.push(leveldb.getAsync(key));
-      })
-      .on('close', fin)
-      .on('end', fin)
-      .on('error', function(err) {
-        reject(err);
-      })
-  });
-}
-
-
-/**
- * For leveldb keys, translates a Number into a string that can be
- * lexicographically ordered from lowest to highest (positive numbers only).
- */
-function ToAsc(n) {
-  _toHexBuffer.writeDoubleBE(n, 0)
-  return _toHexBuffer.toString('hex');
-}
-var _toHexBuffer = new Buffer(8); // Good thing we're single-threaded.
-
-
-/**
- * For leveldb keys, translates a Number into a string that can be
- * lexicographically ordered from highest to lowest (positive numbers only).
- */
-function ToDesc(n) {
-  var b = _toHexBuffer;
-  b.writeDoubleBE(n, 0);
-  b[0] = 255 - b[0];
-  b[1] = 255 - b[1];
-  b[2] = 255 - b[2];
-  b[3] = 255 - b[3];
-  b[4] = 255 - b[4];
-  b[5] = 255 - b[5];
-  b[6] = 255 - b[6];
-  b[7] = 255 - b[7];
-  return b.toString('hex');
-}

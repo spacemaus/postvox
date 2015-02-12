@@ -1,4 +1,5 @@
-var debug = require('debug')('vox:interchangeclient');
+var Chain = require('./chain');
+var debug = require('debug')('vox:connection-manager');
 var errors = require('./errors');
 var events = require('events');
 var io = require('socket.io-client');
@@ -30,12 +31,9 @@ var ReferenceTracker = require('./referencetracker').ReferenceTracker;
  * @emits InterchangeConnection#reconnect_failed
  * @emits InterchangeConnection#error
  * @emits InterchangeConnection#SESSION
- * @emits InterchangeConnection#USER_PROFILE
- * @emits InterchangeConnection#USER_STATUS
- * @emits InterchangeConnection#SUBSCRIPTION
- * @emits InterchangeConnection#MESSAGE
+ * @emits InterchangeConnection#STANZA
  */
-exports.ConnectionManager = function(hubClient, version, agent) {
+var ConnectionManager = module.exports = function(hubClient, version, agent) {
   var self = new events.EventEmitter();
 
   self.connections = {};
@@ -45,6 +43,7 @@ exports.ConnectionManager = function(hubClient, version, agent) {
   var sourceByNickTracker = ReferenceTracker();
   var interchangeBySourceTracker = ReferenceTracker();
   var sourceToInterchangeUrl = {}
+  var interchangeChain = new Chain(_connectByUrl);
 
   /**
    * Opens an interchange connection to the interchange server that hosts the
@@ -60,9 +59,9 @@ exports.ConnectionManager = function(hubClient, version, agent) {
    *
    * @returns {Promise<InterchangeConnection>} an open InterchangeConnection.
    */
-  self.Connect = function(source, nick) {
+  self.connect = function(source, nick) {
     debug('Connecting to source %s', source);
-    return hubClient.GetUserProfile(source)
+    return hubClient.getUserProfile(source)
       .then(function(userProfile) {
         var interchangeUrl = userProfile.interchangeUrl;
         if (!interchangeUrl) {
@@ -78,7 +77,7 @@ exports.ConnectionManager = function(hubClient, version, agent) {
           sourceToInterchangeUrl[source] = interchangeUrl;
         }
 
-        return self.ConnectByUrl(interchangeUrl);
+        return self.connectByUrl(interchangeUrl);
       });
   }
 
@@ -89,19 +88,18 @@ exports.ConnectionManager = function(hubClient, version, agent) {
    * @oaram {String} interchangeUrl The URL of the interchange server to connect
    *     to.
    */
-  self.ConnectByUrl = function(interchangeUrl) {
-    var conn = self.connections[interchangeUrl];
-    if (conn) {
-      return conn;
-    }
+  self.connectByUrl = function(interchangeUrl) {
+    return interchangeChain.get(interchangeUrl);
+  }
 
+  function _connectByUrl(interchangeUrl) {
     conn = InterchangeConnection(self, interchangeUrl);
     self.connections[interchangeUrl] = conn;
-    conn.Open();
+    conn._open();
     return conn;
   }
 
-  self._RemoveConnection = function(connection) {
+  self._removeConnection = function(connection) {
     if (self.connections[connection.interchangeUrl] == connection) {
       delete self.connections[connection.interchangeUrl];
     }
@@ -114,7 +112,7 @@ exports.ConnectionManager = function(hubClient, version, agent) {
    * @param {String} source A user's nickname.
    * @param {String} nick The nickname of the user requesting the connection.
    */
-  self.Release = function(source, nick) {
+  self.release = function(source, nick) {
     if (!sourceByNickTracker.Remove(source, nick)) {
       return;
     }
@@ -123,8 +121,17 @@ exports.ConnectionManager = function(hubClient, version, agent) {
       return;
     }
     var conn = self.connections[source];
-    conn.Close();
+    conn.close();
     delete self.connections[source];
+  }
+
+  self.close = function() {
+    Object.keys(self.connections).forEach(function(key) {
+      if (!self.connections[key]) {
+        return;
+      }
+      self.connections[key].close();
+    })
   }
 
   return self;
@@ -150,7 +157,7 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
   /**
    * Opens a socket connection to the interchange server.
    */
-  self.Open = function() {
+  self._open = function() {
     debug('Connecting to %s', interchangeUrl);
 
     socket = io.connect(interchangeUrl, {
@@ -168,7 +175,7 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
       connectionManager.emit('connect', {
           interchangeUrl: interchangeUrl
       });
-      NextCommand();
+      _nextCommand();
     });
 
     socket.on('error', function(err) {
@@ -184,7 +191,7 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
       // If our client has previously set the session, then reissue it on
       // reconnection.
       if (self.sessionId) {
-        self.SESSION('_reconnect_', self.sessionId);
+        self.SESSION(self.sessionId);
       }
       connectionManager.emit('reconnect', {
           interchangeUrl: interchangeUrl
@@ -210,24 +217,9 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
     // Interchange Push Messages //
     ///////////////////////////////
 
-    socket.on('USER_PROFILE', function(userProfile) {
-      debug('USER_PROFILE', userProfile);
-      connectionManager.emit('USER_PROFILE', userProfile);
-    });
-
-    socket.on('USER_STATUS', function(userStatus) {
-      debug('USER_STATUS', userStatus);
-      connectionManager.emit('USER_STATUS', userStatus);
-    });
-
-    socket.on('SUBSCRIPTION', function(subscription) {
-      debug('SUBSCRIPTION', subscription);
-      connectionManager.emit('SUBSCRIPTION', subscription);
-    });
-
-    socket.on('MESSAGE', function(message) {
-      debug('MESSAGE', message);
-      connectionManager.emit('MESSAGE', message);
+    socket.on('STANZA', function(stanza) {
+      debug('STANZA', stanza);
+      connectionManager.emit('STANZA', stanza);
     });
 
     return self;
@@ -237,10 +229,10 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
   // Interchange Commands //
   //////////////////////////
 
-  self.SESSION = function(source, sessionId) {
+  self.SESSION = function(sessionId) {
     self.sessionId = sessionId;
-    var url = 'vox://' + source + (sessionId ? ('/session/' + sessionId) : '/session');
-    return SendCommand('POST', url, {
+    var url = 'vox:__session__' + (sessionId ? ('/session/' + sessionId) : '/session');
+    return sendCommand('POST', url, {
           version: connectionManager.version,
           agent: connectionManager.agent,
        }, true)
@@ -258,22 +250,30 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
         self.serverAgent = reply.agent;
         reply.interchangeUrl = interchangeUrl;
         connectionManager.emit('SESSION', reply);
-        NextCommand();
+        _nextCommand();
         return reply;
       });
   }
 
-  self.POST = function(url, payload) {
-    return SendCommand('POST', url, payload);
-  }
-
   self.GET = function(url, payload) {
-    return SendCommand('GET', url, payload);
+    return sendCommand('GET', url, payload);
   }
 
-  self.Close = function() {
+  self.POST = function(url, payload) {
+    return sendCommand('POST', url, payload);
+  }
+
+  self.SUBSCRIBE = function(url, payload) {
+    return sendCommand('SUBSCRIBE', url, payload);
+  }
+
+  self.UNSUBSCRIBE = function(url, payload) {
+    return sendCommand('UNSUBSCRIBE', url, payload);
+  }
+
+  self.close = function() {
     socket.close();
-    connectionManager._RemoveConnection(self);
+    connectionManager._removeConnection(self);
   }
 
   /**
@@ -285,13 +285,13 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
    * If this connection is not ready to receive commands, the command is queued
    * for later execution.
    */
-  function SendCommand(method, url, payload, skipQueue) {
+  function sendCommand(method, url, payload, skipQueue) {
     if (!self.connected) {
       debug('Queueing %s %s', method, url);
       return new P(function(resolve, reject) {
         var p = P.method(function() {
           debug('Dequeueing %s %s', method, url);
-          return _SendCommand(method, url, payload)
+          return _sendCommand(method, url, payload)
             .then(resolve)
             .catch(reject);
         });
@@ -302,18 +302,17 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
         }
       });
     }
-    return _SendCommand(method, url, payload);
+    return _sendCommand(method, url, payload);
   }
 
-  function _SendCommand(method, url, payload) {
+  function _sendCommand(method, url, payload) {
     return new P(function(resolve, reject) {
       var data = {
-          method: method,
           url: url,
           payload: payload
       };
-      debug('%s %s %s\n', interchangeUrl, method, url, data);
-      socket.emit('VOX', data, function(reply) {
+      debug('REQUEST %s %s %s\n', interchangeUrl, method, url, data);
+      socket.emit(method, data, function(reply) {
         debug('REPLY %s %s %s\n', interchangeUrl, method, url, reply);
         if (reply && reply.status && reply.status != 200) {
           reject(reply);
@@ -327,12 +326,12 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
   /**
    * Executes the next command on the queue.
    */
-  function NextCommand() {
+  function _nextCommand() {
     var fn = pendingCommands.shift();
     if (!fn) {
       return;
     }
-    fn().then(NextCommand);
+    fn().then(_nextCommand);
   }
 
   return self;

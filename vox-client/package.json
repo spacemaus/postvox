@@ -1,14 +1,15 @@
 {
   "name": "vox-client",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "A basic terminal client for the Postvox network",
   "author": "spacemaus@spacemaus.com",
   "bin": {
     "vox": "vox.js"
   },
+  "main": "vox-client.js",
   "scripts": {
     "vox": "NODE_ENV=development node vox.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha --reporter dot --slow 200ms --bail"
   },
   "dependencies": {
     "blessed": "0.0.38",
@@ -16,14 +17,24 @@
     "colors": "^1.0.3",
     "debug": "^2.1.0",
     "json-format": "0.0.1",
+    "level": "^0.18.0",
     "lockfile": "^1.0.0",
+    "lodash": "^3.0.1",
     "minimist": "^1.1.0",
     "mkdirp": "^0.5.0",
     "moment": "^2.9.0",
+    "morse-node": "^0.1.1",
     "sequelize": "^2.0.0-rc8",
+    "split": "^0.3.3",
     "sqlite3": "^3.0.4",
+    "through2": "^0.6.3",
     "ursa": "^0.8.1",
-    "vox-common": "^0.0.1"
+    "vox-common": "^0.0.2"
+  },
+  "devDependencies": {
+    "mocha": "^2.1.0",
+    "temp": "^0.8.1",
+    "vox-server": "^0.0.2"
   },
   "repository": {
     "type": "git",

@@ -25,7 +25,7 @@
     "sequelize": "^2.0.0-rc4",
     "socket.io": "^1.2.1",
     "sqlite3": "^3.0.4",
-    "vox-common": "^0.0.1"
+    "vox-common": "^0.0.2"
   },
   "devDependencies": {
     "mocha": "^2.1.0",

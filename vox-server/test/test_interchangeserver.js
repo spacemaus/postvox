@@ -7,10 +7,10 @@
 
 var assert = require('assert');
 var authentication = require('vox-common/authentication');
+var ConnectionManager = require('vox-common/connection-manager');
 var eyes = require('vox-common/eyes');
-var fakehub = require('./fakehub');
+var fakehub = require('vox-common/test/fakehub');
 var hubclient = require('vox-common/hubclient');
-var interchangeclient = require('vox-common/interchangeclient');
 var interchangedb = require('../interchangedb');
 var interchangeserver = require('../interchangeserver');
 var P = require('bluebird');
@@ -18,13 +18,13 @@ var temp = require('temp');
 var urlparse = require('url');
 var ursa = require('ursa');
 var uuid = require('node-uuid');
+var voxurl = require('vox-common/voxurl');
 
 
 temp.track(); // Delete temp files.
 
 
 describe('interchangeserver', function() {
-
   var fakeHub;
   var fakeHubUrl;
   var serverHubClient;
@@ -42,7 +42,7 @@ describe('interchangeserver', function() {
   before(function() {
     return fakehub.FakeHub()
       .then(function(f) {
-        fakehub.StubHubPublicKey();
+        fakehub.stubHubPublicKey();
         fakeHub = f;
         fakeHubUrl = urlparse.format({
             protocol: 'http',
@@ -54,12 +54,12 @@ describe('interchangeserver', function() {
   })
 
   beforeEach(function() {
-    fakeHub.__ClearProfiles__();
+    fakeHub.__clearProfiles__();
     _availableUserKeys = _cachedUserKeys.slice(0);
 
     // We create one server with a local DB, and one client with its own local
     // DB.
-    return interchangedb.OpenDb({ dbFile: temp.path(), messageDbDir: temp.path() })
+    return interchangedb.openDb({ dbFile: temp.path(), streamDbDir: temp.path() })
       .then(function(db) {
         serverHubClient = hubclient.HubClient(fakeHubUrl, db);
         return interchangeserver.CreateInterchangeServer(0, 0, serverHubClient, db);
@@ -68,10 +68,10 @@ describe('interchangeserver', function() {
         server = s;
       })
       .then(function() {
-        return interchangedb.OpenDb({ dbFile: temp.path(), messageDbDir: temp.path() })
+        return interchangedb.openDb({ dbFile: temp.path(), streamDbDir: temp.path() })
           .then(function(db) {
             clientHubClient = hubclient.HubClient(fakeHubUrl, db);
-            clientManager = interchangeclient.ConnectionManager(clientHubClient, '0.0.0', 'unittest');
+            clientManager = ConnectionManager(clientHubClient, '0.0.0', 'unittest');
           })
       });
   })
@@ -80,7 +80,7 @@ describe('interchangeserver', function() {
     eyes.close();
   })
 
-  function _GenerateUserKey() {
+  function _generateUserKey() {
     if (_availableUserKeys.length) {
       return _availableUserKeys.pop();
     }
@@ -95,10 +95,10 @@ describe('interchangeserver', function() {
   //////////////////////
 
   /** Creates a new user and registers it with the fake Hub. */
-  function RegisterUser(nick) {
-    var key = _GenerateUserKey();
+  function registerUser(nick) {
+    var key = _generateUserKey();
     userKeys[nick] = key;
-    return clientHubClient.RegisterUserProfile({
+    return clientHubClient.registerUserProfile({
         nick: nick,
         interchangeUrl: server.serverUrl,
         pubkey: key.toPublicPem('utf8'),
@@ -107,15 +107,16 @@ describe('interchangeserver', function() {
     }, key.toPrivatePem('utf8'));
   }
 
-  /** Sends a new UserProfile to the fake Hub, then sends a POST to vox://<nick>/profile */
-  function UpdateUserProfile(stanza) {
+  /** Sends a new UserProfile to the fake Hub, then sends a stanza to vox:<nick>/profile */
+  function updateUserProfile(stanza) {
     var key = userKeys[stanza.nick];
-    authentication.SignUserProfileStanza(stanza, key);
-    return clientHubClient.RegisterUserProfile(stanza, key.toPrivatePem('utf8'))
+    stanza.type = 'USER_PROFILE';
+    authentication.signStanza(stanza, key);
+    return clientHubClient.registerUserProfile(stanza, key.toPrivatePem('utf8'))
       .then(function(userProfile) {
-        return clientManager.Connect(userProfile.nick, userProfile.nick)
+        return clientManager.connect(userProfile.nick, userProfile.nick)
           .then(function(conn) {
-            return conn.POST('vox://' + userProfile.nick + '/profile', userProfile);
+            return conn.POST('vox:' + userProfile.nick + '/profile', userProfile);
           })
           .then(function(reply) {
             assert.equal(reply.status, 200);
@@ -126,8 +127,8 @@ describe('interchangeserver', function() {
   }
 
   /** Opens a connection and sends SESSION. */
-  function EstablishSession(source, nick) {
-    return clientManager.Connect(source, nick)
+  function establishSession(owner, nick) {
+    return clientManager.connect(owner, nick)
       .then(function(conn) {
         if (conn.sessionId) {
           return conn;
@@ -136,130 +137,95 @@ describe('interchangeserver', function() {
       });
   }
 
-  /** Sets up a route on vox://<source> for `routeUrl` */
-  function EstablishRoute(source, routeUrl) {
-    return EstablishSession(source, source)
+  /** Sets up a route on vox:<owner> for `routeUrl` */
+  function subscribeTo(routeUrl) {
+    var owner = voxurl.toSource(routeUrl);
+    return establishSession(owner, owner)
       .then(function(conn) {
-        var stanza = {
-            routeUrl: routeUrl,
-            weight: 1,
+        var payload = {
+            sessionId: conn.sessionId,
             updatedAt: NOW
         };
-        return conn.POST('vox://' + source + '/session/' + conn.sessionId + '/routes', stanza)
+        return conn.SUBSCRIBE(routeUrl, payload)
           .then(function(reply) {
             assert.equal(reply.status, 200);
-            assert(!!reply.route);
-            return reply.route;
           });
       });
   }
 
-  /** Sends POST to vox://<source>/messages */
-  function PostMessage(source, stanza) {
-    return clientManager.Connect(source, stanza.author)
+  /** Sends POST to vox:<stream> */
+  function postMessage(stanza) {
+    var owner = voxurl.toSource(stanza.stream);
+    stanza.type = 'MESSAGE';
+    return clientManager.connect(owner, stanza.nick)
       .then(function(conn) {
-        authentication.SignMessageStanza(stanza, userKeys[stanza.author]);
-        return conn.POST('vox://' + source + '/messages', stanza);
+        authentication.signStanza(stanza, userKeys[stanza.nick]);
+        return conn.POST(voxurl.toCanonicalUrl(stanza.stream), { stanza: stanza });
       })
       .then(function(reply) {
         assert.equal(reply.status, 200);
-        assert(!!reply.message);
-        return reply.message;
+        assert(!!reply.stanza);
+        return reply.stanza;
       });
   }
 
-  /** Sends POST to vox://<source>/subscriptions */
-  function PostSubscription(source, stanza) {
-    return clientManager.Connect(source, source)
+  /** Sends POST to vox:<stream> */
+  function postVote(stanza) {
+    var owner = voxurl.toSource(stanza.stream);
+    stanza.type = 'VOTE';
+    return clientManager.connect(owner, stanza.nick)
       .then(function(conn) {
-        authentication.SignSubscriptionStanza(stanza, userKeys[source]);
-        return conn.POST('vox://' + source + '/subscriptions', stanza);
+        authentication.signStanza(stanza, userKeys[stanza.nick]);
+        return conn.POST(voxurl.toCanonicalUrl(stanza.stream), { stanza: stanza });
       })
       .then(function(reply) {
         assert.equal(reply.status, 200);
-        assert(!!reply.subscription);
-        return reply.subscription;
+        assert(!!reply.stanza);
+        return reply.stanza;
       })
   }
 
-  /** Sends POST to vox://<source>/subscribers */
-  function PostSubscriber(source, stanza) {
-    return clientManager.Connect(source, stanza.nick)
+  /** Sends POST to vox:<stream> */
+  function postUserStatus(stanza) {
+    var owner = voxurl.toSource(stanza.stream);
+    stanza.type = 'USER_STATUS';
+    return clientManager.connect(owner, stanza.nick)
       .then(function(conn) {
-        authentication.SignSubscriptionStanza(stanza, userKeys[stanza.nick]);
-        return conn.POST('vox://' + source + '/subscribers', stanza);
+        authentication.signStanza(stanza, userKeys[stanza.nick]);
+        return conn.POST(voxurl.toCanonicalUrl(stanza.stream), { stanza: stanza });
       })
       .then(function(reply) {
         assert.equal(reply.status, 200);
-        assert(!!reply.subscription);
-        return reply.subscription;
+        assert(!!reply.stanza);
+        return reply.stanza;
       })
   }
 
-  /** Sends POST to vox://<source>/status */
-  function PostUserStatus(source, stanza) {
-    return clientManager.Connect(source, stanza.nick)
+  /** Sends GET to vox:<stream> */
+  function listStanzas(stream, options) {
+    var owner = voxurl.toSource(stream);
+    return clientManager.connect(owner, owner)
       .then(function(conn) {
-        authentication.SignUserStatusStanza(stanza, userKeys[stanza.nick]);
-        return conn.POST('vox://' + source + '/status', stanza);
+        return conn.GET(voxurl.toCanonicalUrl(stream), options);
       })
       .then(function(reply) {
         assert.equal(reply.status, 200);
-        assert(!!reply.userStatus);
-        return reply.userStatus;
-      })
-  }
-
-  /** Sends GET to vox://<source>/messages */
-  function ListMessages(source, url) {
-    url = url ? url : 'vox://' + source + '/messages';
-    return clientManager.Connect(source, source)
-      .then(function(conn) {
-        return conn.GET(url, { limit: 10 });
-      })
-      .then(function(reply) {
-        assert.equal(reply.status, 200);
-        assert(!!reply.messages);
-        return reply.messages;
+        assert(!!reply.stanzas);
+        return reply.stanzas;
       });
   }
-
-  function ListSubscriptions(source) {
-    return clientManager.Connect(source, source)
-      .then(function(conn) {
-        return conn.GET('vox://' + source + '/subscriptions', { limit: 10 });
-      })
-      .then(function(reply) {
-        assert.equal(reply.status, 200);
-        assert(!!reply.subscriptions);
-        return reply.subscriptions;
-      });
-  }
-
-  function ListSubscribers(source, url) {
-    return clientManager.Connect(source, source)
-      .then(function(conn) {
-        return conn.GET(url + '/subscribers', { limit: 10 });
-      })
-      .then(function(reply) {
-        assert.equal(reply.status, 200);
-        assert(!!reply.subscriptions);
-        return reply.subscriptions;
-      });
-  }
-
 
   ////////////////
   // Test cases //
   ////////////////
 
   it('accepts POST to /messages', function() {
-    return RegisterUser('tester')
+    return registerUser('tester')
       .then(function() {
-        return PostMessage('tester', { author: 'tester', text: 'hi there!', updatedAt: NOW });
+        return postMessage({ stream: 'tester', nick: 'tester', text: 'hi there!', updatedAt: NOW });
       })
       .then(function() {
-        return ListMessages('tester');
+        return listStanzas('tester');
       })
       .then(function(messages) {
         assert.equal(messages.length, 1);
@@ -267,37 +233,37 @@ describe('interchangeserver', function() {
       });
   })
 
-  it('lists only the messages from a source', function() {
-    return P.all([RegisterUser('a'), RegisterUser('b')])
+  it('lists only the messages from a stream', function() {
+    return P.all([registerUser('a'), registerUser('b')])
       .then(function() {
         return P.all([
-            PostMessage('a', { author: 'a', text: 'hi there!', updatedAt: NOW }),
-            PostMessage('b', { author: 'b', text: 'hi there!', updatedAt: NOW })
+            postMessage({ stream: 'a', nick: 'a', text: 'hi there!', updatedAt: NOW }),
+            postMessage({ stream: 'b', nick: 'b', text: 'hi there!', updatedAt: NOW })
         ]);
       })
       .then(function() {
-        return ListMessages('a');
+        return listStanzas('a');
       })
       .then(function(messages) {
         assert.equal(messages.length, 1);
-        assert.equal(messages[0].author, 'a');
+        assert.equal(messages[0].nick, 'a');
       });
   })
 
   it('lists replies to a message', function() {
-    return P.all([RegisterUser('a')])
+    return P.all([registerUser('a')])
       .then(function() {
-        return PostMessage('a', { author: 'a', text: 'first', updatedAt: NOW });
+        return postMessage({ stream: 'a', nick: 'a', text: 'first', updatedAt: NOW });
       })
       .then(function(message) {
-        var messageUrl = message.messageUrl;
+        var messageUrl = voxurl.getStanzaUrl(message);
         return P.all([
-            PostMessage('a', { author: 'a', text: 'second', updatedAt: NOW, replyTo: messageUrl }),
-            PostMessage('a', { author: 'a', text: 'third', updatedAt: NOW + 1, replyTo: messageUrl }),
-            PostMessage('a', { author: 'a', text: 'fourth', updatedAt: NOW + 2 })
+            postMessage({ stream: 'a', nick: 'a', text: 'second', updatedAt: NOW, replyTo: messageUrl }),
+            postMessage({ stream: 'a', nick: 'a', text: 'third', updatedAt: NOW + 1, replyTo: messageUrl }),
+            postMessage({ stream: 'a', nick: 'a', text: 'fourth', updatedAt: NOW + 2 })
         ])
         .then(function() {
-          return ListMessages('a', messageUrl + '/replyTo');
+          return listStanzas('a', { replyTo: messageUrl });
         })
         .then(function(messages) {
           assert.equal(messages.length, 2);
@@ -309,19 +275,19 @@ describe('interchangeserver', function() {
   })
 
   it('lists replies to a thread', function() {
-    return P.all([RegisterUser('a')])
+    return P.all([registerUser('a')])
       .then(function() {
-        return PostMessage('a', { author: 'a', text: 'first', updatedAt: NOW });
+        return postMessage({ stream: 'a', nick: 'a', text: 'first', updatedAt: NOW });
       })
       .then(function(message) {
-        var thread = message.messageUrl;
-        return PostMessage('a', { author: 'a', text: 'second', updatedAt: NOW + 1, replyTo: thread });
+        var thread = voxurl.getStanzaUrl(message);
+        return postMessage({ stream: 'a', nick: 'a', text: 'second', updatedAt: NOW + 1, replyTo: thread, thread: thread });
       })
       .then(function(reply1) {
-        return PostMessage('a', { author: 'a', text: 'third', updatedAt: NOW + 2, thread: reply1.thread });
+        return postMessage({ stream: 'a', nick: 'a', text: 'third', updatedAt: NOW + 2, thread: reply1.thread });
       })
       .then(function(reply2) {
-        return ListMessages('a', reply2.thread + '/thread');
+        return listStanzas('a', { thread: reply2.thread });
       })
       .then(function(messages) {
         assert.equal(messages.length, 2);
@@ -332,42 +298,48 @@ describe('interchangeserver', function() {
   });
 
   it('forwards MESSAGEs to routes', function(done) {
-    clientManager.on('MESSAGE', function(message) {
-      assert.equal('sender', message.author);
-      assert.equal(NOW, message.updatedAt);
-      assert.equal('hi from sender', message.text);
+    clientManager.on('STANZA', function(stanza) {
+      assert.equal('MESSAGE', stanza.type);
+      assert.equal('sender', stanza.nick);
+      assert.equal(NOW, stanza.updatedAt);
+      assert.equal('hi from sender', stanza.text);
       done();
     });
 
-    P.all([RegisterUser('sender')])
+    P.all([registerUser('sender')])
       .then(function() {
-        return EstablishRoute('sender', 'vox://sender/messages');
+        return subscribeTo('vox:sender/friends');
       })
       .then(function() {
-        return PostMessage('sender', { author: 'sender', text: 'hi from sender', updatedAt: NOW});
+        return postMessage({ stream: 'sender/friends', nick: 'sender', text: 'hi from sender', updatedAt: NOW});
       })
       .catch(function(err) {
         done(err);
       });
   });
 
-  it('forwards SUBSCRIPTIONs to routes', function(done) {
-    clientManager.on('SUBSCRIPTION', function(subscription) {
-      assert.equal('sender', subscription.nick);
-      assert.equal(NOW, subscription.updatedAt);
-      assert.equal('vox://other/messages', subscription.subscriptionUrl);
+  it('forwards VOTEs to routes', function(done) {
+    clientManager.on('STANZA', function(stanza) {
+      assert.equal('VOTE', stanza.type);
+      assert.equal('sender', stanza.nick);
+      assert.equal(NOW, stanza.updatedAt);
+      assert.equal('vox:other/123', stanza.voteUrl);
+      assert.equal(2, stanza.score);
+      assert.equal('like', stanza.tag);
       done();
     });
 
-    P.all([RegisterUser('sender'), RegisterUser('other')])
+    P.all([registerUser('sender'), registerUser('other')])
       .then(function() {
-        return EstablishRoute('sender', 'vox://sender/subscriptions');
+        return subscribeTo('vox:sender/things');
       })
       .then(function() {
-        return PostSubscription('sender', {
+        return postVote({
             nick: 'sender',
-            subscriptionUrl: 'vox://other/messages',
-            weight: 1,
+            stream: 'sender/things',
+            voteUrl: 'vox:other/123',
+            score: 2,
+            tag: 'like',
             updatedAt: NOW
          });
       })
@@ -377,19 +349,25 @@ describe('interchangeserver', function() {
   })
 
   it('forwards USER_STATUSes to routes', function(done) {
-    clientManager.on('USER_STATUS', function(userStatus) {
-      assert.equal('sender', userStatus.nick);
-      assert.equal(NOW, userStatus.updatedAt);
-      assert.equal('I am fine', userStatus.statusText);
+    clientManager.on('STANZA', function(stanza) {
+      assert.equal('USER_STATUS', stanza.type);
+      assert.equal('sender', stanza.nick);
+      assert.equal(NOW, stanza.updatedAt);
+      assert.equal('I am fine', stanza.statusText);
       done();
     });
 
-    P.all([RegisterUser('sender')])
+    P.all([registerUser('sender')])
       .then(function() {
-        return EstablishRoute('sender', 'vox://sender/status');
+        return subscribeTo('vox:sender/status');
       })
       .then(function() {
-        return PostUserStatus('sender', { nick: 'sender', statusText: 'I am fine', updatedAt: NOW });
+        return postUserStatus({
+            nick: 'sender',
+            stream: 'sender/status',
+            statusText: 'I am fine',
+            updatedAt: NOW
+        });
       })
       .catch(function(err) {
         done(err);
@@ -397,20 +375,22 @@ describe('interchangeserver', function() {
   })
 
   it('forwards USER_PROFILEs to routes', function(done) {
-    clientManager.on('USER_PROFILE', function(userProfile) {
-      assert.equal('sender', userProfile.nick);
-      assert.equal(NOW, userProfile.updatedAt);
-      assert.equal('I am about', userProfile.about);
+    clientManager.on('STANZA', function(stanza) {
+      assert.equal('USER_PROFILE', stanza.type);
+      assert.equal('sender', stanza.nick);
+      assert.equal(NOW, stanza.updatedAt);
+      assert.equal('I am about', stanza.about);
       done();
     });
 
-    P.all([RegisterUser('sender')])
+    P.all([registerUser('sender')])
       .then(function() {
-        return EstablishRoute('sender', 'vox://sender/profile');
+        return subscribeTo('vox:sender/profile');
       })
       .then(function() {
-        return UpdateUserProfile({
+        return updateUserProfile({
             nick: 'sender',
+            stream: 'sender/profile',
             about: 'I am about',
             updatedAt: NOW + 1,
             pubkey: userKeys['sender'].toPublicPem('utf8')
@@ -423,70 +403,22 @@ describe('interchangeserver', function() {
 
   // TODO test that an event is NOT fired, but without using a timeout:
   // it('stops routing to disconnected sessions', function(done) {
-  //   return P.all([RegisterUser('sender')])
+  //   return P.all([registerUser('sender')])
   //     .then(function() {
-  //       return EstablishRoute('sender', 'vox://sender/messages');
+  //       return subscribeTo('vox:sender');
   //     })
   //     .then(function() {
-  //       return PostMessage('sender', { author: 'sender', text: 'hi from sender', updatedAt: NOW});
+  //       return postMessage({ nick: 'sender', text: 'hi from sender', updatedAt: NOW});
   //     })
   //     .then(function() {
-  //       return clientManager.Connect('sender', 'sender');
+  //       return clientManager.connect('sender', 'sender');
   //     })
   //     .then(function(conn) {
-  //       conn.Close();
-  //       return PostMessage('sender', { author: 'sender', text: 'hi from sender', updatedAt: NOW});
+  //       conn.close();
+  //       return postMessage({ nick: 'sender', text: 'hi from sender', updatedAt: NOW});
   //     })
   //     .catch(function(err) {
   //       done(err);
   //     });
   // });
-
-  it('lists subscriptions for a source', function() {
-    return P.all([RegisterUser('tester'), RegisterUser('other')])
-      .then(function() {
-        return P.all([
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW }),
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
-            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/messages', weight: 1, updatedAt: NOW + 3}),
-            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
-        ])
-      })
-      .then(function() {
-        return ListSubscriptions('tester');
-      })
-      .then(function(subscriptions) {
-        assert.equal(subscriptions.length, 3);
-        subscriptions.sort(function(a, b) { return a.updatedAt - b.updatedAt });
-        assert(subscriptions[0].subscriptionUrl.endsWith('/messages'));
-        assert(subscriptions[1].subscriptionUrl.endsWith('/status'));
-        assert(subscriptions[2].subscriptionUrl.endsWith('/profile'));
-      });
-  })
-
-  it('lists subscribers to a URL', function() {
-    var URL_OF_INTEREST = 'vox://tester/messages';
-    return P.all([RegisterUser('tester'), RegisterUser('other')])
-      .then(function() {
-        return P.all([
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW }),
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/status', weight: 1, updatedAt: NOW + 1 }),
-            PostSubscriber('tester', { nick: 'tester', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 2 }),
-            PostSubscriber('tester', { nick: 'other', subscriptionUrl: URL_OF_INTEREST, weight: 1, updatedAt: NOW + 3 }),
-            PostSubscriber('tester', { nick: 'other', subscriptionUrl: 'vox://tester/profile', weight: 1, updatedAt: NOW + 4 })
-        ])
-      })
-      .then(function() {
-        return ListSubscribers('tester', URL_OF_INTEREST);
-      })
-      .then(function(subscriptions) {
-        assert.equal(subscriptions.length, 2);
-        subscriptions.sort(function(a, b) { return a.updatedAt - b.updatedAt });
-        assert.equal(subscriptions[0].subscriptionUrl, URL_OF_INTEREST);
-        assert.equal(subscriptions[1].subscriptionUrl, URL_OF_INTEREST);
-        assert.equal(subscriptions[0].nick, 'tester');
-        assert.equal(subscriptions[1].nick, 'other');
-      });
-  })
 })

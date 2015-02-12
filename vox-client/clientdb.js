@@ -1,8 +1,11 @@
 var debug = require('debug')('vox:clientdb');
-var voxcommon = require('vox-common');
-var S = require('sequelize');
+var LevelIndex = require('vox-common/level-index')
+var levelup = require('level');
 var P = require('bluebird');
+var S = require('sequelize');
 var util = require('util');
+var voxcommon = require('vox-common');
+var voxurl = require('vox-common/voxurl');
 
 
 var logging = function(v) {
@@ -10,7 +13,7 @@ var logging = function(v) {
 }
 
 
-function EnsureTimestamps(columns) {
+function ensureTimestamps(columns) {
   var now = Date.now();
   if (!columns.updatedAt) {
     columns.updatedAt = now;
@@ -24,13 +27,17 @@ function EnsureTimestamps(columns) {
 }
 
 
-exports.OpenDb = function(config) {
-    if (!config.dbFile) {
+exports.openDb = function(config) {
+  if (!config.dbFile) {
     throw new Error('Must specify config.dbFile');
+  }
+  if (!config.streamDbDir) {
+    throw new Error('Must specify config.streamDbDir');
   }
 
   var self = {};
   self.dbFile = config.dbFile;
+  self.streamDbDir = config.streamDbDir;
 
   var db = new S(null, null, null, {
       dialect: 'sqlite',
@@ -38,54 +45,106 @@ exports.OpenDb = function(config) {
       logging: logging
   });
 
+  var leveldb = levelup(config.streamDbDir, { valueEncoding: 'json' });
+  P.promisifyAll(leveldb);
+
   self.sequelize = db;
+  self.leveldb = leveldb;
+
+  /////////////////////////////////
+  // Generic-ish key:value table //
+  /////////////////////////////////
+
+  var Row = db.define('Row', {
+      'kind': { type: S.STRING, primaryKey: true },
+      'key': { type: S.STRING, primaryKey: true },
+      'value': S.TEXT,
+      'createdAt': S.BIGINT,
+      'updatedAt': S.BIGINT,
+      'deletedAt': S.BIGINT,
+      'seq': S.BIGINT,
+      'ts': S.BIGINT,
+      'stream': S.TEXT,
+      'a': S.TEXT,
+      'b': S.TEXT,
+      'c': S.TEXT,
+      'd': S.TEXT
+  });
+
+  self.insertRow = function(kind, row) {
+    row.kind = kind;
+    var originalValue = row.value;
+    row.value = JSON.stringify(originalValue);
+    return Row.create(row)
+      .return(originalValue);
+  }
+
+  self.deleteRow = function(kind, key) {
+    return Row.destroy({
+        where: { kind: kind, key: key }
+    });
+  }
+
+  self.getRow = function(kind, key) {
+    return Row.find({ where: { kind: kind, key: key } })
+      .then(function(row) {
+        return row ? JSON.parse(row.value) : null;
+      });
+  }
+
+  self.listRows = function(kind, where, options) {
+    options = options || {};
+    where = where || {};
+    where.kind = kind;
+    options.where = where;
+    return Row.findAll(options)
+      .then(function(rows) {
+        return rows.map(function(row) {
+          return JSON.parse(row.value);
+        })
+      })
+  }
+
+  self.countRows = function(kind, where) {
+    where = where || {};
+    where.kind = kind;
+    return Row.count({ where: where });
+  }
+
 
   /////////////////
   // UserProfile //
   /////////////////
 
-  // Local cache of data from the Hub.  When we look up an user profile in the
+  // Local cache of data from the Hub.  When we look up a user profile in the
   // Hub, we stash its data here.
 
-  var UserProfile = db.define('UserProfile', {
-      'nick'          : { type: S.STRING, primaryKey: true },
-      'interchangeUrl': S.STRING,
-      'pubkey'        : S.TEXT,
-      'about'         : S.TEXT,
-      'createdAt'     : S.BIGINT,
-      'updatedAt'     : { type: S.BIGINT, primaryKey: true },
-      'deletedAt'     : S.BIGINT,
-      'hubCreatedAt'  : S.BIGINT,
-      'hubSyncedAt'   : S.BIGINT,
-      'syncedAt'      : S.BIGINT,
-      'sig'           : S.TEXT,
-      'hubSig'        : S.TEXT
-  }, {
-      timestamps: false,
-      paranoid: true // include deletedAt column
-  });
-
-  self.GetUserProfile = function(nick, opt_updatedBefore) {
-    var where = { nick: nick };
-    if (opt_updatedBefore) {
-      where.updatedAt = { lt: opt_updatedBefore };
-    }
-    return UserProfile.findOne({
-        where: where,
-        order: 'updatedAt DESC'
-    });
+  self.saveUserProfile = function(columns) {
+    ensureTimestamps(columns);
+    return self.insertRow(
+        'UserProfile',
+        {
+            key: columns.nick + ':' + columns.updatedAt,
+            value: columns,
+            a: columns.nick,
+            ts: columns.updatedAt
+        });
   }
 
-  self.SetUserProfile = function(columns) {
-    EnsureTimestamps(columns);
-    return UserProfile.create(columns);
-  }
-
-  self.GetUserWithSubscriptions = function(nick) {
-    return UserProfile.findOne({
-        where: { nick: nick }, order: 'updatedAt DESC',
-        include: [Subscription]
-    });
+  self.getUserProfile = function(nick, opt_updatedBefore) {
+    return self.listRows(
+        'UserProfile',
+        {
+            a: nick,
+            ts: { lt: opt_updatedBefore }
+        },
+        {
+            order: 'ts DESC',
+            limit: 1
+        })
+      .then(function(values) {
+        return values.length ? values[0] : null;
+      })
   }
 
 
@@ -93,81 +152,32 @@ exports.OpenDb = function(config) {
   // Subscriptions //
   ///////////////////
 
-  var Subscription = db.define('Subscription', {
-      'nick': {
-          type: S.STRING,
-          primaryKey: true,
-      },
-      'subscriptionUrl': {
-          type: S.STRING(510),
-          primaryKey: true,
-      },
-      'source'   : S.STRING,
-      'weight'   : S.INTEGER,
-      'createdAt': S.BIGINT,
-      'updatedAt': S.BIGINT,
-      'deletedAt': S.BIGINT,
-      'syncedAt' : S.BIGINT,
-      'sig'      : S.STRING
-  }, {
-      timestamps: false,
-      paranoid: true // include deletedAt column
-  });
-
-  UserProfile.hasMany(Subscription, { foreignKey: 'source' });
-
-  self.InsertSubscription = function(columns) {
-    EnsureTimestamps(columns);
-    return Subscription.create(columns);
+  self.saveSubscription = function(columns) {
+    ensureTimestamps(columns);
+    return self.insertRow(
+        'Subscription',
+        {
+            key: columns.url,
+            value: columns,
+            a: columns.interchangeUrl,
+            b: columns.source
+        });
   }
 
-  self.ListSubscriptions = function(nick) {
-    return Subscription.findAll({ where: { nick: nick, weight: { gt: 0 } } });
+  self.deleteSubscription = function(url) {
+    self.deleteRow('Subscription', url);
   }
 
-  self.ListSubscriptionsBySource = function(nick) {
-    return Subscription.findAll({ where: { nick: nick, weight: { gt: 0 } } });
+  self.listSubscriptions = function() {
+    return self.listRows('Subscription');
   }
 
-
-  //////////////////////
-  // Requested routes //
-  //////////////////////
-
-  var Route = db.define('Route', {
-      'routeUrl': {
-          type: S.STRING(510),
-          primaryKey: true
-      },
-      'source'        : S.STRING,
-      'sessionId'     : S.STRING,
-      'interchangeUrl': S.STRING,
-      'weight'        : S.INTEGER,
-      'createdAt'     : S.BIGINT,
-      'updatedAt'     : S.BIGINT,
-      'deletedAt'     : S.BIGINT,
-      'syncedAt'      : S.BIGINT
-  }, {
-      timestamps: false,
-      paranoid: true // include deletedAt column
-  });
-
-  self.InsertRoute = function(columns) {
-    EnsureTimestamps(columns);
-    return Route.create(columns);
+  self.listSubscriptionsByInterchangeUrl = function(interchangeUrl) {
+    return self.listRows('Subscription', { a: interchangeUrl });
   }
 
-  self.FindRoutes = function(interchangeUrl) {
-    return Route.findAll({
-        where: {
-            interchangeUrl: interchangeUrl,
-            weight: { gt: 0 }
-        }
-    });
-  }
-
-  self.FindRoutesBySource = function(source) {
-    return Route.findAll({ where: { source: source } });
+  self.listSubscriptionsBySource = function(source) {
+    return self.listRows('Subscription', { b: source });
   }
 
 
@@ -175,17 +185,93 @@ exports.OpenDb = function(config) {
   // Interchange Session IDs //
   /////////////////////////////
 
-  var InterchangeSessionId = db.define('InterchangeSessionId', {
-      'interchangeUrl': { type: S.STRING, primaryKey: true },
-      'sessionId'     : S.TEXT
-  });
-
-  self.SetInterchangeSessionId = function(columns) {
-    return InterchangeSessionId.create(columns);
+  self.setInterchangeSessionId = function(session) {
+    return self.insertRow('InterchangeSessionId', {
+       key: session.interchangeUrl,
+       value: session
+    });
   }
 
-  self.GetInterchangeSessionId = function(interchangeUrl) {
-    return InterchangeSessionId.find({ where: { interchangeUrl: interchangeUrl } });
+  self.getInterchangeSessionId = function(interchangeUrl) {
+    return self.getRow('InterchangeSessionId', interchangeUrl)
+      .then(function(session) {
+        return session ? session.sessionId : undefined;
+      });
+  }
+
+
+  /////////////
+  // Streams //
+  /////////////
+
+  self._stanzaIndex = new LevelIndex(voxurl.getStanzaUrl,
+    [['stream', 's'], ['seq', 'seq', LevelIndex.toAsc]],
+    [['thread', 't'], ['seq', 'seq', LevelIndex.toAsc]])
+
+  self.insertStanza = function(stanza) {
+    var batch = leveldb.batch();
+    self._stanzaIndex.put(batch, stanza);
+    return P.fromNode(batch.write.bind(batch));
+  }
+
+  self.getStanza = function(stanzaUrl) {
+    return leveldb.getAsync(stanzaUrl);
+  }
+
+  self.listStanzas = function(options) {
+    return self._stanzaIndex.scan(leveldb, options);
+  }
+
+  self.setSyncCheckpoint = function(url, seq) {
+    return self.insertRow(
+        'SyncCheckpoint',
+        {
+            key: url,
+            value: { seq: seq }
+        });
+  }
+
+  self.getSyncCheckpoint = function(url) {
+    return self.getRow('SyncCheckpoint', url)
+      .then(function(v) {
+        return v ? v.seq : 0;
+      });
+  }
+
+  self.setSyncHorizon = function(url, seq) {
+    return self.insertRow(
+        'SyncHorizon',
+        {
+            key: url,
+            value: { seq: seq }
+        });
+  }
+
+  self.getSyncHorizon = function(url) {
+    return self.getRow('SyncHorizon', url)
+      .then(function(v) {
+        return v ? v.seq : 0;
+      });
+  }
+
+  ////////////////////////
+  // Client checkpoints //
+  ////////////////////////
+
+  self.setClientCheckpoint = function(clientKey, stream, seq) {
+    return self.insertRow(
+        'ClientCheckpoint',
+        {
+            key: clientKey + ':' + stream,
+            value: { seq: seq }
+        });
+  }
+
+  self.getClientCheckpoint = function(clientKey, stream) {
+    return self.getRow('ClientCheckpoint', clientKey + ':' + stream)
+      .then(function(v) {
+        return v ? v.seq : 0;
+      });
   }
 
 
@@ -193,13 +279,13 @@ exports.OpenDb = function(config) {
   // Triggers //
   //////////////
 
-  function MatchPrimaryKeys(model) {
+  function matchPrimaryKeys(model) {
     return model.primaryKeyAttributes.map(
         function(name) { return util.format('%s = NEW.%s', name, name)})
         .join(' AND ');
   }
 
-  function CreateDeleteOlderRowsTrigger(model) {
+  function createDeleteOlderRowsTrigger(model) {
     var tableName = model.tableName;
     var triggerName = 'deleteOlderRowsBeforeInsert_' + tableName;
     return P.all([
@@ -209,7 +295,7 @@ exports.OpenDb = function(config) {
             'FOR EACH ROW BEGIN ' +
                 'DELETE FROM %s WHERE %s AND updatedAt <= NEW.updatedAt;' +
             'END',
-            triggerName, tableName, tableName, MatchPrimaryKeys(model)))
+            triggerName, tableName, tableName, matchPrimaryKeys(model)))
     ]);
   }
 
@@ -217,17 +303,15 @@ exports.OpenDb = function(config) {
   // Misc //
   //////////
 
-  self.Close = function() {
+  self.close = function() {
     db.close();
+    leveldb.close();
   }
 
   return db.sync()
     .then(function() {
       return P.all([
-          CreateDeleteOlderRowsTrigger(Route),
-          CreateDeleteOlderRowsTrigger(UserProfile),
-          CreateDeleteOlderRowsTrigger(Subscription),
-          CreateDeleteOlderRowsTrigger(InterchangeSessionId),
+          createDeleteOlderRowsTrigger(Row),
       ]);
     })
     .return(self);

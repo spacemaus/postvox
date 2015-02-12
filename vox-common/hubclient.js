@@ -13,15 +13,15 @@ var MAX_USER_PROFILE_CACHE_MS = 30 * 60 * 60000; // 30 minutes
 
 
 /**
- * A client interface for the Hub.  Caches user profile information in the local
- * db.
+ * Creates a client interface for the Hub.  Caches user profile information in
+ * the local db.
  *
  * @param {URL} hubUrl The URL of the Hub.  Can be any server that implements
- *     the Hub protocol, though its encryption key must match that
+ *     the Hub protocol, though its encryption key must match that of
  *     authentication.js.
  * @param {Object} db A DB stub.
- * @param {function(String, Number?)} db.GetUserProfile
- * @param {function(Object)} db.SetUserProfile
+ * @param {function(String, Number?)} db.getUserProfile
+ * @param {function(Object)} db.saveUserProfile
  */
 exports.HubClient = function(hubUrl, db) {
   debug('Using Hub at', urlparse.format(hubUrl));
@@ -37,7 +37,7 @@ exports.HubClient = function(hubUrl, db) {
    * Caches the UserProfile, but only if it is newer than the existing cached
    * version.
    */
-  function setUserProfileInCache(userProfile) {
+  function saveUserProfileInCache(userProfile) {
     var old = userProfileCache.peek(userProfile.nick);
     if (old && old.updatedAt > userProfile.updatedAt) {
       return;
@@ -57,24 +57,28 @@ exports.HubClient = function(hubUrl, db) {
    *     Otherwise the Hub will reject the update.
    * @return {Promise<UserProfile>} the registered profile.
    */
-  self.RegisterUserProfile = function(userProfile, privkey) {
+  self.registerUserProfile = function(userProfile, privkey) {
     debug('Registering ' + userProfile.nick + ' with home ' + userProfile.interchangeUrl +
         ' with the Hub at (' + urlparse.format(hubUrl) + ')...');
+
+    userProfile.type = 'USER_PROFILE';
 
     if (!userProfile.updatedAt) {
       userProfile.updatedAt = Date.now();
     }
 
-    authentication.SignUserProfileStanza(userProfile,
-        ursa.createPrivateKey(privkey, undefined, 'utf8'));
+    if (typeof(privkey) == 'string') {
+      privkey = ursa.createPrivateKey(privkey, undefined, 'utf8');
+    }
+    authentication.signStanza(userProfile, privkey);
 
     debug('Sending userProfile to the Hub', userProfile);
     return httpStub.serverPost('/profiles/' + userProfile.nick, userProfile)
       .then(function(reply) {
         var userProfile = reply.userProfile;
-        authentication.ValidateHubSignature(userProfile);
-        setUserProfileInCache(userProfile);
-        return db.SetUserProfile(userProfile);
+        authentication.validateHubSignature(userProfile);
+        saveUserProfileInCache(userProfile);
+        return db.saveUserProfile(userProfile);
       });
   }
 
@@ -87,14 +91,14 @@ exports.HubClient = function(hubUrl, db) {
    *
    * @return {Promise<UserProfile>}
    */
-  self.GetUserProfile = function(nick, opt_updatedBefore) {
+  self.getUserProfile = function(nick, opt_updatedBefore) {
     // Fetch from local cache.
     var userProfile = userProfileCache.get(nick);
     if (userProfile && (!opt_updatedBefore || opt_updatedBefore > userProfile.updatedAt)) {
       return P.resolve(userProfile);
     }
-    var stop = eyes.start('hubclient.GetUserProfile.uncached');
-    return db.GetUserProfile(nick, opt_updatedBefore)
+    var stop = eyes.start('hubclient.getUserProfile.uncached');
+    return db.getUserProfile(nick, opt_updatedBefore)
       .then(function(userProfile) {
         // TODO expire cache.
         if (userProfile) {
@@ -103,10 +107,10 @@ exports.HubClient = function(hubUrl, db) {
           }
         }
         // Not found locally: fetch info from Hub.
-        return self.GetUserProfileFromHub(nick, opt_updatedBefore);
+        return self.getUserProfileFromHub(nick, opt_updatedBefore);
       })
       .then(function(userProfile) {
-        setUserProfileInCache(userProfile);
+        saveUserProfileInCache(userProfile);
         return userProfile;
       })
       .finally(stop);
@@ -121,8 +125,8 @@ exports.HubClient = function(hubUrl, db) {
    *
    * @return {Promise<UserProfile>}
    */
-  self.GetUserProfileFromHub = function(nick, opt_updatedBefore) {
-    var stop = eyes.start('hubclient.GetUserProfileFromHub');
+  self.getUserProfileFromHub = function(nick, opt_updatedBefore) {
+    var stop = eyes.start('hubclient.getUserProfileFromHub');
     var url = '/profiles/' + encodeURIComponent(nick);
     if (opt_updatedBefore) {
       url += '?updatedBefore=' + opt_updatedBefore;
@@ -133,22 +137,12 @@ exports.HubClient = function(hubUrl, db) {
         if (!userProfile || nick != userProfile.nick) {
           throw new errors.ServerError('Got bad reply from Hub');
         }
-        return authentication.CheckUserProfileStanza(self, userProfile)
+        return authentication.checkStanza(self, userProfile)
           .then(function() {
-            return db.SetUserProfile({
-                nick: userProfile.nick,
-                interchangeUrl: userProfile.interchangeUrl,
-                pubkey: userProfile.pubkey,
-                about: userProfile.about,
-                createdAt: userProfile.createdAt,
-                updatedAt: userProfile.updatedAt,
-                sig: userProfile.sig,
-                hubSig: userProfile.hubSig,
-                hubSyncedAt: userProfile.hubSyncedAt,
-            });
+            return db.saveUserProfile(userProfile);
           })
           .then(function(userProfile) {
-            setUserProfileInCache(userProfile);
+            saveUserProfileInCache(userProfile);
             return userProfile;
           });
       })

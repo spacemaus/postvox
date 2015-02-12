@@ -12,12 +12,6 @@ var P = require('bluebird');
 var url = require('url');
 
 
-function FatalError(err) {
-  console.error('FATAL ERROR'.red, err, err ? err.stack : '');
-  process.exit(1);
-}
-
-
 /**
  * Creates a basic interchange server and returns a Promise for a context
  * object.
@@ -46,9 +40,9 @@ exports.CreateInterchangeServer = function(port, metricsPort, hubClient, db) {
   context.identity = null;
   context.interchangeService = null;
 
-  eyes.Init(metricsPort);
+  eyes.init(metricsPort);
 
-  return CreateExpressAppServer(app, port)
+  return createExpressAppServer(app, port)
     .then(function(c) {
       context.appServer = c.appServer;
       context.serverUrl = c.serverUrl;
@@ -57,7 +51,7 @@ exports.CreateInterchangeServer = function(port, metricsPort, hubClient, db) {
       // Start the interchange service.
       context.interchangeService = interchangeservice.InterchangeService(
           context.db, context.hubClient, interchangeroutes.router);
-      context.interchangeService.Listen(context.app, context.appServer);
+      context.interchangeService.listen(context.app, context.appServer);
       debug('Server online. Listening at:', context.appServer.address());
       return context;
     });
@@ -74,7 +68,7 @@ exports.CreateInterchangeServer = function(port, metricsPort, hubClient, db) {
  *   app_server: The server listening to the given port.
  *   serverUrl: The url to report to clients.
  */
-function CreateExpressAppServer(app, port) {
+function createExpressAppServer(app, port) {
   return new P(function(resolve, reject) {
     var appServer = app.listen(port, function() {
       var addr = appServer.address();

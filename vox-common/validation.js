@@ -4,7 +4,7 @@
  *
  * That is, it contains letter- and number-like characters.
  */
-exports.IsValidName = function(name) {
+exports.isValidName = function(name) {
   return name.replace(UNICODE_NAME_RE, '').length == 0;
 };
 
@@ -12,7 +12,7 @@ exports.IsValidName = function(name) {
 /**
  * Transforms the given (valid) name into its canonical form.
  */
-exports.MakeCanonicalName = function(name) {
+exports.makeCanonicalName = function(name) {
   return name.toLowerCase();
 }
 
@@ -20,12 +20,12 @@ exports.MakeCanonicalName = function(name) {
 /**
  * Returns `s` with all unsafe characters removed.
  */
-exports.MakeTerminalSafe = function(s) {
+exports.makeTerminalSafe = function(s) {
   return s.replace(ANNOYING_CHARS_RE, '');
 };
 
 
-exports.RegExpQuote = function(s) {
+exports.regExpQuote = function(s) {
   return String(s).replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
 }
 

@@ -2,7 +2,7 @@ Postvox Hub Protocol
 =======================
 
 *STATUS: Draft/Proof-of-concept*
-*VERSION: 0.0.0*
+*VERSION: 0.0.1*
 
 0. Overview
 ==============
@@ -19,6 +19,20 @@ The profile record tells everyone on the Postvox network:
 > There's nothing stopping servers and clients from using their own Hub.  They
 > only need to give a command-line flag and a public key.  Nevertheless, the
 > design would be stronger if the name service authority were distributed.
+
+> TODO: Spec out name recovery, private data.
+>
+> Some ideas:
+> - private email/info field.
+> - trusted signers.  A private mapping of { trustedNick: trustVal }.  A profile
+>   update will be accepted iff it has been signed by enough trusted signers so
+>   that the sum of trustVal >= 100.  Trusted signers cannot be removed unless
+>   the removal request is signed by the account owner AND the trustedNick (to
+>   prevent stolen keys from locking out an account).
+
+> TODO: Spec out delegated authority.
+> - Public mapping of { delegatedNick: [permission, ...] }
+> - Alt: { permission: [delegatedPubkey, ...] }
 
 
 1. User profiles
@@ -37,45 +51,7 @@ The Hub will reject any nickname that does not meet those criteria.
 
 UserProfile records
 ----------------------
-A user's profile contains these fields:
-
-Name | Type | Details
-:----|:-----|:-------
-nick           | String | The nickname of the user.
-interchangeUrl | URL | The URL of the user's interchange server.
-pubkey         | String | The user's public key, in RSA PEM format.
-about          | String | Details about the user.  Max 4096 characters.  Probably a string in JSON format.
-updatedAt      | Timestamp (ms) | The user-provided timestamp of the most recent update.
-hubCreatedAt   | Timestamp (ms) | The timestamp when this profile was first received by the Hub.
-hubSyncedAt    | Timestamp (ms) | The timestamp that the profile was most recently received by the Hub.
-sig            | String | The Base64 encoded signature (see [Authentication](Protocol.md/#2Authentication-and-encryption)).
-hubSig         | String | The Base64 encoded signature from the Hub (see [Authentication](Protocol.md/#2Authentication-and-encryption)).
-
-#### `sig` fields
-
-- about
-- interchangeUrl
-- nick
-- pubkey
-- updatedAt
-
-**NOTE** When the user's `pubkey` has changed, the `UserProfile.sig` field
-notifying others of the change MUST be signed with the user's **previous**
-private key.
-
-#### `hubSig` fields
-
-(Note that this order is not alphabetical, but is instead the list of `sig`
-fields with the list of Hub-specific fields appended.)
-
-- about
-- interchangeUrl
-- nick
-- pubkey
-- updatedAt
-- hubCreatedAt
-- hubSyncedAt
-- sig
+A user's profile is stored as a [UserProfile stanza](Protocol.md#userprofile-stanza).
 
 
 2. Endpoints

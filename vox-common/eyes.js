@@ -14,7 +14,7 @@ var os = require('os');
 /**
  * Initializes the metrics server.
  */
-exports.Init = function(serverPort) {
+exports.init = function(serverPort) {
   if (exports.isInitialized) {
     throw new Error('Eyes metrics server is already initialized!');
   }

@@ -6,7 +6,7 @@
 
 
 var assert = require('assert');
-var moreAsserts = require('./more-asserts');
+var moreAsserts = require('vox-common/test/more-asserts');
 var interchangedb = require('../interchangedb');
 var P = require('bluebird');
 var temp = require('temp');
@@ -23,14 +23,14 @@ describe('interchangedb', function() {
   var db;
 
   beforeEach(function() {
-    return interchangedb.OpenDb({ dbFile: temp.path(), messageDbDir: temp.path() })
+    return interchangedb.openDb({ dbFile: temp.path(), streamDbDir: temp.path() })
       .then(function(newDb) {
         db = newDb;
       })
   });
 
   afterEach(function() {
-    db.Close();
+    db.close();
   })
 
 
@@ -38,11 +38,12 @@ describe('interchangedb', function() {
   // Helper functions //
   //////////////////////
 
-  function insertMessage(messageUrl, author, source, syncedAt) {
-    return db.InsertMessage({
-        messageUrl: messageUrl,
-        author: author,
-        source: source,
+  function appendMessage(text, author, stream, syncedAt) {
+    return db.appendStanza({
+        type: 'MESSAGE',
+        text: text,
+        nick: author,
+        stream: stream,
         syncedAt: syncedAt,
     }, true);
   }
@@ -53,131 +54,154 @@ describe('interchangedb', function() {
 
   it('scans message author index', function() {
     return P.all([
-          insertMessage('aaa1', 'aaa', 'source', 1),
-          insertMessage('aaa2', 'aaa', 'source', 2),
-          insertMessage('aaa3', 'aaa', 'source', 3),
-          insertMessage('aaab', 'aaab', 'source', 2),
+          appendMessage('aaa1', 'aaa', 'bbb/friends', 1),
+          appendMessage('aaa2', 'aaa', 'bbb/friends', 2),
+          appendMessage('aaa3', 'aaa', 'bbb/friends', 3),
+          appendMessage('aaab', 'aaab', 'bbb/friends', 2),
       ])
       .then(function() {
-        return db.ListMessages({ source: 'source', 'author': 'aaa' });
+        return db.listStanzas({ stream: 'bbb/friends', nick: 'aaa' });
       })
       .then(function(messages) {
         assert.equal(3, messages.length);
-        assert.equal('aaa3', messages[0].messageUrl);
-        assert.equal('aaa2', messages[1].messageUrl);
-        assert.equal('aaa1', messages[2].messageUrl);
+        assert.equal('aaa1', messages[0].text);
+        assert.equal('aaa2', messages[1].text);
+        assert.equal('aaa3', messages[2].text);
       });
   })
 
-  it('limits scans to syncedAt range', function() {
+  it('limits scans to seq range', function() {
     return P.all([
-          insertMessage('aaa1', 'aaa', 'source', 1),
-          insertMessage('aaa2', 'aaa', 'source', 2),
-          insertMessage('aaa3', 'aaa', 'source', 3),
+          appendMessage('aaa1', 'aaa', 'bbb/friends', 1),
+          appendMessage('aaa2', 'aaa', 'bbb/friends', 2),
+          appendMessage('aaa3', 'aaa', 'bbb/friends', 3),
       ])
       .then(function() {
-        return db.ListMessages({
-            source: 'source',
+        return db.listStanzas({
+            stream: 'bbb/friends',
             'author': 'aaa',
-            syncedBefore: 2.5,
-            syncedAfter: 1.5
+            seqStart: 2,
+            seqLimit: 3
         });
       })
       .then(function(messages) {
         assert.equal(1, messages.length);
-        assert.equal('aaa2', messages[0].messageUrl);
+        assert.equal('aaa2', messages[0].text);
       });
   })
 
   it('assigns seq numbers', function() {
-    return insertMessage('aaa1', 'aaa', 'aaa', 1)
-      .then(insertMessage.bind(null, 'aaa2', 'aaa', 'aaa', 2))
-      .then(insertMessage.bind(null, 'aaa3', 'aaa', 'bbb', 3))
-      .then(insertMessage.bind(null, 'aaa4', 'aaa', 'bbb', 4))
-      .then(db.ListMessages.bind(db, { source: 'aaa' }))
+    return appendMessage('aaa1', 'aaa', 'aaa/friends', 1)
+      .then(appendMessage.bind(null, 'aaa2', 'aaa', 'aaa/friends', 2))
+      .then(appendMessage.bind(null, 'aaa3', 'aaa', 'bbb/friends', 3))
+      .then(appendMessage.bind(null, 'aaa4', 'aaa', 'bbb/friends', 4))
+      .then(db.listStanzas.bind(db, { stream: 'aaa/friends' }))
       .then(function(messages) {
         assert.equal(2, messages.length);
-        assert.equal('aaa2', messages[0].messageUrl);
-        assert.equal(2, messages[0].seq);
-        assert.equal('aaa1', messages[1].messageUrl);
-        assert.equal(1, messages[1].seq);
+        assert.equal('aaa1', messages[0].text);
+        assert.equal(1, messages[0].seq);
+        assert.equal('aaa2', messages[1].text);
+        assert.equal(2, messages[1].seq);
       })
-      .then(db.ListMessages.bind(db, { source: 'bbb' }))
+      .then(db.listStanzas.bind(db, { stream: 'bbb/friends' }))
       .then(function(messages) {
         assert.equal(2, messages.length);
-        assert.equal('aaa4', messages[0].messageUrl);
-        assert.equal(2, messages[0].seq);
-        assert.equal('aaa3', messages[1].messageUrl);
-        assert.equal(1, messages[1].seq);
+        assert.equal('aaa3', messages[0].text);
+        assert.equal(1, messages[0].seq);
+        assert.equal('aaa4', messages[1].text);
+        assert.equal(2, messages[1].seq);
       });
   })
 
   it('loads seq numbers from the db', function() {
-    return insertMessage('aaa1', 'aaa', 'aaa', 1)
+    return appendMessage('aaa1', 'aaa', 'aaa/friends', 1)
       .then(function() {
-        var config = { dbFile: db.dbFile, messageDbDir: db.messageDbDir };
-        db.Close();
-        return interchangedb.OpenDb(config);
+        var config = { dbFile: db.dbFile, streamDbDir: db.streamDbDir };
+        db.close();
+        return interchangedb.openDb(config);
       })
       .then(function(newDb) {
         db = newDb;
-        return insertMessage('aaa2', 'aaa', 'aaa', 2);
+        return appendMessage('aaa2', 'aaa', 'aaa/friends', 2);
       })
       .then(function() {
-        return db.ListMessages({
-            source: 'aaa'
+        return db.listStanzas({
+            stream: 'aaa/friends'
         });
       })
       .then(function(messages) {
         assert.equal(2, messages.length);
-        assert.equal('aaa2', messages[0].messageUrl);
-        assert.equal(2, messages[0].seq);
-        assert.equal('aaa1', messages[1].messageUrl);
-        assert.equal(1, messages[1].seq);
+        assert.equal('aaa1', messages[0].text);
+        assert.equal(1, messages[0].seq);
+        assert.equal('aaa2', messages[1].text);
+        assert.equal(2, messages[1].seq);
       });
   })
 
-  it('lists messages with seqAfter', function() {
+  it('lists messages with seqStart', function() {
     return P.all([
-        insertMessage('url1', 'author', 'source', 1),
-        insertMessage('url2', 'author', 'source', 2),
-        insertMessage('url3', 'author', 'source', 3),
-        insertMessage('url4', 'author', 'source', 4),
-        insertMessage('url5', 'author', 'source', 5),
+        appendMessage('hi1', 'author', 'bbb/friends', 1),
+        appendMessage('hi2', 'author', 'bbb/friends', 2),
+        appendMessage('hi3', 'author', 'bbb/friends', 3),
+        appendMessage('hi4', 'author', 'bbb/friends', 4),
+        appendMessage('hi5', 'author', 'bbb/friends', 5),
       ])
       .then(function() {
-        return db.ListMessages({
-            source: 'source',
-            seqAfter: 3,
+        return db.listStanzas({
+            stream: 'bbb/friends',
+            seqStart: 3,
             limit: 2
         });
       })
       .then(function(messages) {
         assert.equal(2, messages.length);
-        assert.equal('url3', messages[0].messageUrl);
-        assert.equal('url4', messages[1].messageUrl);
+        assert.equal('hi3', messages[0].text);
+        assert.equal('hi4', messages[1].text);
+      })
+  })
+
+  it('lists messages with seqLimit and reverse', function() {
+    return P.all([
+        appendMessage('hi1', 'author', 'bbb/friends', 1),
+        appendMessage('hi2', 'author', 'bbb/friends', 2),
+        appendMessage('hi3', 'author', 'bbb/friends', 3),
+        appendMessage('hi4', 'author', 'bbb/friends', 4),
+        appendMessage('hi5', 'author', 'bbb/friends', 5),
+      ])
+      .then(function() {
+        return db.listStanzas({
+            stream: 'bbb/friends',
+            seqLimit: 4,
+            limit: 2,
+            reverse: true
+        });
+      })
+      .then(function(messages) {
+        assert.equal(2, messages.length);
+        assert.equal('hi3', messages[0].text);
+        assert.equal('hi2', messages[1].text);
       })
   })
 
   it('refreshes target cache on session reconnect', function() {
     return P.all([
-          db.NewSession({ sessionId: 's1', isConnected: true }),
-          db.NewSession({ sessionId: 's2', isConnected: true }),
-          db.InsertRoute({ routeUrl: 'url1', sessionId: 's1', weight: 1 }),
-          db.InsertRoute({ routeUrl: 'url1', sessionId: 's2', weight: 1 }),
+          db.createSession({ sessionId: 's1', isConnected: true }),
+          db.createSession({ sessionId: 's2', isConnected: true }),
+          db.insertRoute({ routeUrl: 'url1', sessionId: 's1', weight: 1 }),
+          db.insertRoute({ routeUrl: 'url1', sessionId: 's2', weight: 1 }),
       ])
-      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {})) // Fill the cache.
+      .then(db.forTargetSessionIds.bind(db, 'url1', function() {})) // Fill the cache.
       .then(function(sessionIds) {
         moreAsserts.sortedArraysEqual(['s1', 's2'], sessionIds);
-        db.UncacheTargetSessionId('url1', 's1');
-        return db.SetSessionConnected({ sessionId: 's1', isConnected: false })
+        db.uncacheTargetSessionId('url1', 's1');
+        return db.setSessionConnected({ sessionId: 's1', isConnected: false })
       })
-      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {}, true))
+      .then(db.forTargetSessionIds.bind(db, 'url1', function() {}, true))
       .then(function(sessionIds) {
         moreAsserts.sortedArraysEqual(['s2'], sessionIds);
-        return db.SetSessionConnected({ sessionId: 's1', isConnected: true });
+        return db.setSessionConnected({ sessionId: 's1', isConnected: true });
       })
-      .then(db.ForTargetSessionIds.bind(db, 'url1', function() {}, true))
+      .then(db.forTargetSessionIds.bind(db, 'url1', function() {}, true))
       .then(function(sessionIds) {
         moreAsserts.sortedArraysEqual(['s1', 's2'], sessionIds);
       });

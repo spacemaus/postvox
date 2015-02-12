@@ -27,22 +27,22 @@ exports.InterchangeService = function(db, hubClient, commandRouter) {
   /**
    * Begins listening for connections on sockets and HTTP.
    */
-  self.Listen = function(app, appServer) {
-    var sockets = interchangesockets.Listen(appServer, self);
-    interchangeweb.Listen(app, self, sockets);
+  self.listen = function(app, appServer) {
+    var sockets = interchangesockets.listen(appServer, self);
+    interchangeweb.listen(app, self, sockets);
   }
 
   /**
    * Associates the given sessionId with an open socket.
    */
-  self.SetSessionSocket = function(sessionId, socket) {
+  self.setSessionSocket = function(sessionId, socket) {
     sessionSockets[sessionId] = socket;
   }
 
   /**
-   * Clears the association set by `SetSessionSocket()`.
+   * Clears the association set by `setSessionSocket()`.
    */
-  self.ClearSessionSocket = function(sessionId, socket) {
+  self.clearSessionSocket = function(sessionId, socket) {
     if (sessionSockets[sessionId] == socket) {
       delete sessionSockets[sessionId];
     }
@@ -52,31 +52,31 @@ exports.InterchangeService = function(db, hubClient, commandRouter) {
    * Pushes a message to connected interchange clients who are following the
    * given targets.
    */
-  self.TargetCast = function(targetUrls, eventName, data) {
+  self.targetCast = function(targetUrls, eventName, data) {
     debug('cast to %s %s %s', targetUrls, eventName, data);
-    var markToSocketLatency = eyes.start('targetcast.' + eventName + '.tosocket_latency');
+    var markToSocketLatency = eyes.start('targetCast.' + eventName + '.tosocket_latency');
     var sent = {}; // Session IDs that have already received this message.
     var p =[];
     for (var i = 0; i < targetUrls.length; i++) {
       var url = targetUrls[i];
       sendToRoute(url, eventName, data, sent, markToSocketLatency)
         .catch(function(err) {
-          console.error('Error in TargetCast', err, err.stack);
-          eyes.mark('targetcast.error');
+          console.error('Error in targetCast', err, err.stack);
+          eyes.mark('targetCast.error');
         })
     }
   }
 
   function sendToRoute(url, eventName, data, sent, markToSocketLatency) {
     var sentCount = 0;
-    return db.ForTargetSessionIds(url,
+    return db.forTargetSessionIds(url,
       function(sessionId) {
         var socket = sessionSockets[sessionId];
         if (!socket) {
           debug('removing disconnected session', sessionId);
           // TODO We can be lazier about this:
-          db.UncacheTargetSessionId(url, sessionId);
-          eyes.mark('targetcast.disconnected_session');
+          db.uncacheTargetSessionId(url, sessionId);
+          eyes.mark('targetCast.disconnected_session');
         } else if (!(sessionId in sent)) {
           sent[sessionId] = true;
           socket.emit(eventName, data);

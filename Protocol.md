@@ -2,7 +2,7 @@ Postvox Protocol
 ===================
 
 *STATUS: Draft/Proof-of-concept*
-*VERSION: 0.0.0*
+*VERSION: 0.0.1*
 
 Postvox: A modern social network in the classical style.
 
@@ -26,38 +26,34 @@ Table of contents
 --------------------
 
 - [0. Overview](#0-overview)
+  - [Postvox streams](#postvox-streams)
+  - [Data philosophy](#data-philosophy)
 - [1. Interchange server protocol](#1-interchange-server-protocol)
-    - [Synchronization](#synchronization)
-    - [Timestamps](#timestamps)
-    - [Input limits, validation, normalization](#input-limits-validation-normalization)
+  - [Synchronization](#synchronization)
+  - [Timestamps](#timestamps)
+  - [Input limits, validation, normalization](#input-limits-validation-normalization)
 - [2. Authentication and encryption](#2-authentication-and-encryption)
-    - [Public and private encryption keys](#public-and-private-encryption-keys)
-    - [Signing stanzas](#signing-stanzas)
+  - [Public and private encryption keys](#public-and-private-encryption-keys)
+  - [Signing stanzas](#signing-stanzas)
+  - [Encrypted stanzas](#encrypted-stanzas)
+  - [Private streams](#private-streams)
 - [3. Accessing interchange endpoints](#3-accessing-interchange-endpoints)
 - [4. Interchange endpoints](#4-interchange-endpoints)
-    - [Begin or resume a session](#begin-or-resume-a-session)
-    - [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
-    - [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
-    - [Notify the server and listeners that a resource is being followed](#notify-the-server-and-listeners-that-a-resource-is-being-followed)
-    - [Create or update a message](#create-or-update-a-message)
-    - [List existing messages](#list-existing-messages)
-    - [List replies to a specific message](#list-replies-to-a-specific-message)
-    - [List replies to a message thread](#list-replies-to-a-message-thread)
-    - [Get the details of an existing message](#get-the-details-of-an-existing-message)
-    - [List the subscribers to a given URL](#list-the-subscribers-to-a-given-url)
-    - [List the subscriptions of a user](#list-the-subscriptions-of-a-user)
-    - [Update a user's profile details](#update-a-users-profile-details)
-    - [Read a user's profile details](#read-a-users-profile-details)
-    - [Update a user's status](#update-a-users-status)
-    - [Read a user's status](#read-a-users-status)
-    - [Block a user](#block-a-user)
-    - [List a source's blocks](#list-a-sources-blocks)
+  - [Begin or resume a session](#begin-or-resume-a-session)
+  - [Request push notifications for stanzas published to a stream](#request-push-notifications-for-stanzas-published-to-a-stream)
+  - [Append a stanza to a stream](#append-a-stanza-to-a-stream)
+  - [Read a list of stanzas from a stream](#read-a-list-of-stanzas-from-a-stream)
+  - [Read a specific stanza from a stream](#read-a-specific-stanza-from-a-stream)
 - [5. Stanzas](#5-stanzas)
-    - [UserProfile stanza](#userprofile-stanza)
-    - [UserStatus stanza](#userstatus-stanza)
-    - [Message stanza](#message-stanza)
-    - [Subscription stanza](#subscription-stanza)
-    - [Block stanza](#block-stanza)
+  - [Common fields](#common-fields)
+  - [Stanza URLs](#stanza-urls)
+  - [Message stanza](#message-stanza)
+  - [UserProfile stanza](#userprofile-stanza)
+  - [UserStatus stanza](#userstatus-stanza)
+  - [Vote stanza](#vote-stanza)
+  - [Settings stanza](#settings-stanza)
+  - [Invite stanza](#invite-stanza)
+  - [Envelope stanza](#envelope-stanza)
 
 
 0. Overview
@@ -68,42 +64,16 @@ database (called an **interchange server**) stores one or more streams of
 
 ![Postvox architecture diagram](architecture-diagram.png)
 
-The protocol is REST-shaped, although in the typical case most of the transport
-happens over a socket interface rather than via raw HTTP requests.
-
-A typical Postvox URL looks like this:
-
-    vox://<source>/messages/<message-id>
-
-e.g.:
-
-    vox://spacemaus/messages/1234
-
-The `<source>` part of the URL is a user's nickname.  It is translated into a
-real internet hostname by looking it up at the Hub.  See
-[Hub protocol](Hub-Protocol.md) for details.
-
-(One might reasonably ask why the source isn't just a real hostname to begin
-with.  The reason is so that your nickname [and therefore your identity] is not
-tied to any particular host or service provider.  The extra level of indirection
-means that you can move your hosting provider freely without losing your history
-or connections.)
-
-Multiple `<source>` feeds can be hosted by a single Postvox server.
-
-A user can send messages to that source:
-
-    POST vox://spacemaus/messages
-    <= { author: "landcatt", text: "Hello world!" }
-    => message: { messageUrl: "vox://spacemaus/messages/12345", ... }
+- Each user owns one or more **streams**, which are time-ordered lists of
+  stanzas (messages, invitations, and other notifications).
+- All the streams for a single user are hosted on an **interchange
+  server**<sup>1</sup>.
+- One interchange server can host one or more users and their streams.
 
 The feature that makes Postvox a "social" network (as opposed to a point-to-
 point messaging protocol) is that users can *subscribe* to messages published by
 and sent to other users.  This makes it easy and natural to be a part of larger,
 loosely-connected conversations.
-
-    POST vox://spacemaus/subscriptions
-    <= { nick: "landcatt", subscriptionUrl: "vox://spacemaus" }
 
 Furthermore, a "user" doesn't even have to correspond to a real person.  It's
 possible (and reasonable) to create a "user" that is just a gathering point for
@@ -111,29 +81,96 @@ a community or topical discussion.  For example, one could create a user named
 "technews".  Anyone who wished could then direct messages to @technews, and the
 messages would be pushed to anyone who followed @technews.
 
+<sup>1</sup><small>For the purposes of this document, an "interchange server" is
+any service that can be identified by and reached via a single URL.  That means
+an "interchange server" may actually be a cluster of load-balanced, distributed
+servers behind that one URL.  It makes no difference to the protocol.</small>
+
+
+Postvox streams
+------------------
+A Postvox stream is an ordered list of [stanzas](#5-stanzas).
+
+There are three main actions a client can perform on the Postvox network:
+
+1. Append a stanza to a stream.
+2. Read stanzas from a stream.
+3. Subscribe to or unsubscribe from a stream.
+
+Streams are identified by a Postvox URL.  A typical Postvox URL looks like this:
+
+    vox:<owner>/<stream-name>
+
+e.g.:
+
+    vox:spacemaus/friends
+
+or, for the default public stream:
+
+    vox:spacemaus
+
+The `<owner>` part of the URL is a user's nickname.  It is translated into a
+real internet hostname by looking it up at the Hub.  See
+[Hub protocol](Hub-Protocol.md) for details.
+
+(One might reasonably ask why the nickname isn't just a real hostname to begin
+with.  The reason is so that your nickname [and therefore your identity] is not
+tied to any particular host or service provider.  The extra level of indirection
+means that you can move your hosting provider freely without losing your history
+or connections.)
+
+If `<stream-name>` is omitted from a URL, it refers to the owner's default
+public stream.
+
+Each stream can have its own privacy settings.  Private streams can be
+encrypted.
+
+
+Data philosophy
+------------------
+Some simple guidelines:
+
+1. When you as a user do anything, you should publish the fact to (a) your own
+   interchange server, and (b) the interchange server of the target of that
+   action. *E.g., if you've subscribed to a stream, you might publish a
+   VOTE stanza to that stream and to your own public stream.*
+
+2. If you have a stanza you want someone else to see, you should push it to
+   their interchange server.  *E.g., if you've @mentioned someone, you should
+   publish that message to your own server, then clone it to their server.*
+
+3. If you are interested in a stream, you are responsible for ensuring your view
+   of that stream is up-to-date.  *E.g., the server may push messages to a
+   client, but the client is responsible for checking that there are no gaps in
+   the stream.*
+
 
 
 1. Interchange server protocol
 =================================
-An interchange server stores and serves the message feeds for one or more users.
+The protocol is REST-shaped, although in the typical case most of the transport
+happens over a socket interface rather than via raw HTTP requests.
+
+An interchange server stores and serves the streams for one or more users.
 Clients (applications and other interchange servers) can "subscribe" to receive
-push messages when a user publishes new messages or other updates.
+push messages when a user publishes new stanzas to a stream.
 
-Whenever a client wants to see a certain user's published messages, they will
-connect to that user's registered interchange server.
+Whenever a client wants to see a certain user's stream, they will connect to
+that user's registered interchange server.
 
-Whenever a client wants to direct a message to a certain user, they will push
-the message directly to that user's registered interchange server.
+Whenever a client wants to direct a stanza to a certain user, they will push the
+stanza directly to that user's registered interchange server.
 
-A single message may be copied to multiple places in the network:
+A single stanza may be copied to multiple places in the network:
 
 - On the author's interchange server.
 - On the interchange server's of the author's followers.
 - On the client devices of the author and the followers.
 
 In addition, a message may be "cloned" when the author directs it to one or more
-other users (via "@yourname").  In this case, the clones will have a reference
-to the original message's URL, but will otherwise be independent of each other.
+other users (e.g., via "@yourname").  In this case, the clones will have a
+reference to the original message's URL, but will otherwise be independent of
+each other.
 
 It is the responsibility of the *client* program to ensure that a message is
 pushed to the interchange servers of its explicit addressees.
@@ -141,7 +178,6 @@ pushed to the interchange servers of its explicit addressees.
 
 Synchronization
 ------------------
-
 When an interchange client is connected to an interchange server, the *client*
 is responsible for ensuring that its view of the server's resources is up to
 date. That is, if an interchange server queues a message for delivery to a
@@ -149,16 +185,14 @@ connected client, but the connection is broken before the client received the
 message, it is the client's responsibility to (a) reconnect to the server, and
 (b) request any messages it may have missed.
 
-`MESSAGE` stanzas have a `seq` field that clients can check.  This field is a
-strictly increasing counter for messages posted to a given source.  If a client
-finds a gap in the `seq` values it has for a source, then it can send a request
-to `vox://<source>/messages` and specify `seqAfter` and `limit`.
+Each stanza in a stream has a `seq` field assigned by the server.  The `seq`
+values in a stream are consecutive integers starting from 1.
 
-When messages are updated or deleted, the interchange should store a "tombstone"
-at the syncedAt timestamp of the old version.
+If a client finds a gap in the `seq` values it has for a stream, then it can
+send a read request for the stanzas in the missing interval.
 
-Endpoints that provide a list view accept `limit`, `syncedBefore`, and
-`syncedAfter` parameters.
+When stanzas are updated or deleted, the interchange should store a "tombstone"
+at the `seq` of the old version.
 
 
 Timestamps
@@ -207,28 +241,71 @@ user, but whose signatures do not match the key on file with the Hub.
 
 Signing stanzas
 ------------------
-Every user-generated stanza (messages, subscriptions, status updates) is signed
-with the user's corresponding private key.  Interchange servers and clients must
-verify that the stanzas' signatures match the key on record at the Hub, as of
-the `updatedAt` timestamp in the stanza.
+Every user-generated stanza is signed with the user's corresponding private key.
+Interchange servers and clients must verify that the stanzas' signatures match
+the key on record at the Hub, as of the `updatedAt` timestamp in the stanza.
 
-Whenever `sig` appears in a parameter list, it is defined as the concatenation
-of the other parameter values, sorted in alphabetical order by the parameter
-name, hashed with `SHA-1`, signed by the author's private key, and base64
+Whenever `sig` appears in a stanza or parameter list, it is defined as the
+concatenation of the other stanza fields, sorted in alphabetical order by the
+field name, hashed with `SHA-1`, signed by the author's private key, and base64
 encoded:
 
     values = sortAndConcatenateFields(stanza)
     sig = base64(privateKey.hashAndSign('sha1', values))
 
-Integer and timestamp values are decimal encoded when concatenated.  Boolean
-values are represented as `"true"` or `"false"`.
+When concatenating fields:
 
-Interchange servers must reject any stanza whose signature is invalid.  If an
-interchange server receives stanza with an invalid signature, it must respond
-with a status of `403: Forbidden`.
+- Each field value is terminated by '\x00'.
+- Integer and timestamp values are decimal encoded.
+- Boolean values are represented as `"true"` or `"false"`.
 
-> TODO: private feeds, encrypted stanzas, private group feeds
+Interchange servers and clients must reject any stanza whose signature is
+invalid.  If an interchange server receives stanza with an invalid signature, it
+must respond with a status of `403: Forbidden`.
 
+
+Encrypted stanzas
+--------------------
+If a user wishes to send a private, encrypted stanza to another user, they may
+enclose it in an [Envelope stanza](#envelope-stanza).
+
+- The envelope stanza specifies the minimum public information needed to route
+  the message, along with the encrypted content stanza.
+- The envelope may include the key needed to decode the contents, or it may omit
+  the key if it was previously distributed via the process specified in the
+  [Private streams](#private-streams) section.
+- If the key is included, it is encoded with the intended recipient's registered
+  public key.
+
+
+Private streams
+------------------
+A stream may be marked as **private**.  When a stream is private, then the
+interchange server will accept only [Envelope stanzas](#envelope-stanza) that
+are signed with a user-generated, stream-specific key.
+
+A user may create a private stream and invite others via this process:
+
+1. User "A" generates a public/private keypair (`streamPubkey` and
+   `streamPrivkey`) and a symmetric encryption key (`contentKey`).
+2. User "A" sends a [Settings stanza](#settings-stanza) to the
+   `vox:A/friendsonly` stream.  This stanza includes the *public* key from (1).
+3. User "A" sends an [Envelope stanza](#envelope-stanza) to the streams of each
+   of their friends ("B/private", "C/private", etc.).  This envelope contains:
+   - contents = an [Invite stanza](#invite-stanza) with the `inviteTo` stream
+     name, `streamPrivkey`, and `contentKey`.  The stanza is JSON-encoded and
+     encrypted with `contentKey`.
+   - contentKey = `publicKeyEncrypt(friendPubkey, contentKey)`
+
+Now, when a user wishes to post to the private stream:
+
+1. User "B" creates a stanza (e.g., a [Message](#message-stanza)).
+2. User "B" looks up their invitation for the private stream and locates
+   `streamPrivkey` and `contentKey` for the stream.
+3. User "B" posts an [Envelope stanza](#envelope-stanza) with these fields:
+    - nick = "__private__"
+    - stream = "A/friendsonly" (for example)
+    - contents = `symmetricEncrypt(contentKey, stanza)`
 
 
 3. Accessing interchange endpoints
@@ -239,13 +316,34 @@ implemented by `socket.io`) or via an HTTP request:
 #### Socket commands
 
 When sending a command over a socket connection, the command stanza must have a
-event name of `"VOX"`, and its data must be a JSON object with these fields:
+event name that matches the HTTP method name (i.e., "GET", "POST", "SUBSCRIBE",
+or "UNSUBSCRIBE"), and its data must be a JSON object with these fields:
 
 Name | Type | Details
 :----|:-----|:-------
-method  | String | The HTTP-like method requested, e.g., "GET" or "POST".
-url     | URL | The `vox:` URL being requested, e.g. "vox://spacemaus/messages".
+url     | URL | The `vox:` URL being requested, e.g. "vox:spacemaus/friends".
 payload | Object | The data payload of the command.  See the **Parameters** sections in the documentation for the individual endpoints below.
+
+For example, to fetch recent stanzas from `spacemaus`'s "friends" stream (in
+Node.js):
+
+```js
+var io = require('socket.io-client');
+var socket = io.connect(interchangeUrl, { transports: ['websocket'] };
+socket.emit('GET', {
+    url: 'vox:spacemaus/friends',
+    payload: {
+        type: 'MESSAGE',
+        seqAfter: 100,
+        limit: 20
+    }},
+    function(reply) {
+      console.info('Got reply status: %d, number of stanzas: %d',
+          reply.status,
+          reply.stanzas ? reply.stanzas.length : 0);
+    });
+```
+
 
 #### HTTP commands
 
@@ -254,7 +352,7 @@ parameters:
 
 Name | Type | Details
 :----|:-----|:-------
-source | String | The `<source>` of the equivalent `vox:` URL.  E.g., the URL "vox://spacemaus/messages" translates into "http://example.com/messages?source=spacemaus".
+method | String | The Postvox method name, if the Postvox method is not POST or GET.  E.g., "SUBSCRIBE vox:spacemaus" translates to a URL like "POST http://vanilla.postvox.net?owner=spacemaus&method=SUBSCRIBE"
 
 #### Status codes
 Status codes for both the socket and HTTP endpoints are HTTP status codes.
@@ -284,42 +382,27 @@ metadata.
 ===========================
 
 - [Begin or resume a session](#begin-or-resume-a-session)
-- [Request push notifications when resources are updated](#request-push-notifications-when-resources-are-updated)
-- [Notify the server and listeners that a user is following a resource](#notify-the-server-and-listeners-that-a-user-is-following-a-resource)
-- [Notify the server and listeners that a resource is being followed](#notify-the-server-and-listeners-that-a-resource-is-being-followed)
-- [Create or update a message](#create-or-update-a-message)
-- [List existing messages](#list-existing-messages)
-- [List replies to a specific message](#list-replies-to-a-specific-message)
-- [List replies to a message thread](#list-replies-to-a-message-thread)
-- [Get the details of an existing message](#get-the-details-of-an-existing-message)
-- [List the subscribers to a given URL](#list-the-subscribers-to-a-given-url)
-- [List the subscriptions of a user](#list-the-subscriptions-of-a-user)
-- [Update a user's profile details](#update-a-users-profile-details)
-- [Read a user's profile details](#read-a-users-profile-details)
-- [Update a user's status](#update-a-users-status)
-- [Read a user's status](#read-a-users-status)
-- [Block a user](#block-a-user)
-- [List a source's blocks](#list-a-sources-blocks)
-
-Stanzas:
-
-- [UserProfile stanza](#userprofile-stanza)
-- [UserStatus stanza](#userstatus-stanza)
-- [Message stanza](#message-stanza)
-- [Subscription stanza](#subscription-stanza)
-- [Block stanza](#block-stanza)
+- [Request push notifications for stanzas published to a stream](#request-push-notifications-for-stanzas-published-to-a-stream)
+- [Append a stanza to a stream](#append-a-stanza-to-a-stream)
+- [Read a list of stanzas from a stream](#read-a-list-of-stanzas-from-a-stream)
+- [Read a specific stanza from a stream](#read-a-specific-stanza-from-a-stream)
 
 
 Begin or resume a session
 -----------------------------
+Socket form:
 
-    POST vox://<source>/session
-    POST vox://<source>/session/<sessionId>
+    POST vox:__session__/session[/<sessionId>]
+
+HTTP form:
+
+    POST /session[/<sessionId>]
 
 A "session" is a relationship between an interchange server and client.  It is
-meant to be long-lived.  If a client wants push messages from the server, it
-needs to first establish a session.  Whenever the client reconnects to the
-server, it can reestablish that same session to resume receiving push messages.
+meant to be long-lived.  If a client wants to receive push messages from the
+server, it needs to first establish a session.  Whenever the client reconnects
+to the server, it can reestablish that same session to resume receiving push
+messages.
 
 #### Parameters
 
@@ -336,52 +419,34 @@ Name | Type | Details
 status         | int | The status code of the result.  See [Status codes](#status-codes).
 version        | String | The version of the Postvox protocol that the server understands.
 agent          | String | The server's agent string.  Contents are unspecified.
+terms          | String | A link to the server's terms of service.
 [newSessionId] | String | If a new session was created, then its ID is returned.  Even if a client passes a `sessionId` in its request, it is not guaranteed that the server will be able to resume that session.  Thus, clients must always check this parameter and -- if it is set -- reissue any `ROUTE` commands it may need.
 [error]        | String | If `status` is not 200, a string describing the error.
 
 
 
-Request push notifications when resources are updated
---------------------------------------------------------
+Request push notifications for stanzas published to a stream
+---------------------------------------------------------------
+Socket form:
 
-    POST vox://<source>/session/<sessionId>/routes
+    SUBSCRIBE vox:<owner>[/<stream-name>]
+    UNSUBSCRIBE vox:<owner>[/<stream-name>]
 
-Requests push notifications for any stanzas published to the given `routeUrl`.  The
+HTTP form:
+
+    POST /[<stream-name>]?source=<owner>&method=[SUBSCRIBE|UNSUBSCRIBE]
+
+Requests push notifications for any stanzas published to the given stream. The
 client must first create a session before requesting notifications.
 
-See the **Publishes** sections of the other commands to see which stanzas will
-be delivered.
-
-The `/routes` and `/subscriptions` endpoints appear very similar, but they serve
-different purposes.  A `/subscriptions` endpoint broadcasts a Subscription
-stanza to anyone listening, but has no effect what actually gets pushed to the
-client.  A `/routes` endpoint requests that the server deliver the stanzas to a
-session client, but does not tell other listeners about it.
-
-That is, if you want to follow a source, but you don't want to broadcast that
-fact, then use `/routes`.  If you want to tell others that you're interested in
-a source, but you don't want to receive updates, then use `/subscribers` and
-`/subscriptions`.
-
-Valid `routeUrl` patterns:
-
-    vox://<source>
-    vox://<source>/messages
-    vox://<source>/messages/<message-id>/thread
-    vox://<source>/messages/<message-id>/replyTo
-    vox://<source>/profile
-    vox://<source>/status
-    vox://<source>/subscriptions
-    vox://<source>/subscribers
-    vox://<source>/blocks
+UNSUBSCRIBE does the opposite of SUBSCRIBE.
 
 #### Parameters
 
 Name | Type | Details
 :----|:-----|:-------
-routeUrl  | URL | The URL of the resource to route.
-weight    | int | The weight of the route.  1 or 0, with 1 meaning 'route' and 0 meaning 'do not route'.
-updatedAt | Timestamp (ms) | The timestamp of the command.  For a given `nick` and URL, the server will accept only commands with a timestamp larger than the largest `updatedAt` received for the given URL so far.
+sessionId | String | The session ID assigned by a previous call to [/session](#begin-or-resume-a-session).
+updatedAt | Timestamp (ms) | The timestamp of the request.  For a given `sessionId` and stream URL, the server will accept only commands with a timestamp larger than the largest `updatedAt` received for the given URL so far.
 
 #### Returns
 
@@ -392,560 +457,400 @@ status  | int | The status code of the result.  See [Status codes](#status-codes
 
 
 
-Notify the server and listeners that a user is following a resource
-----------------------------------------------------------------------
+Append a stanza to a stream
+------------------------------
+Socket form:
 
-    POST vox://<source>/subscriptions
+    POST vox:<owner>[/<stream-name]
 
-Valid `subscriptionUrl` patterns (same as `routeUrl` for `/routes`):
+HTTP form:
 
-    vox://<source>
-    vox://<source>/messages
-    vox://<source>/messages/<message-id>
-    vox://<source>/messages/<message-id>/thread
-    vox://<source>/messages/<message-id>/replyTo
-    vox://<source>/profile
-    vox://<source>/status
-    vox://<source>/subscriptions
-    vox://<source>/subscribers
-    vox://<source>/blocks
+    POST /[<stream-name>]?source=<owner>
 
 #### Parameters
 
 Name | Type | Details
 :----|:-----|:-------
-subscriptionUrl | URL | The URL of the resource that the user is following.
-nick            | String | The nickname of the user who is subscribing.  Must be the same as `<source>`.
-weight          | int | The weight of the subscription.  1 or 0, with 1 meaning 'subscribe' and 0 meaning 'unsubscribe'.
-updatedAt       | Timestamp (ms) | The timestamp of the command.  For a given `nick` and URL, the server will accept only commands with a timestamp larger than the largest `updatedAt` received for the given URL so far.
-sig             | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status       | int | The status code of the result.  See [Status codes](#status-codes).
-subscription | [Subscription](#Subscription-stanza) | The subscription that was created.
-[error]      | String | If `status` is not 200, a string describing the error.
-
-#### Publishes
-
-Publishes a [Subscription stanza](#Subscription-stanza) to these paths:
-
-    vox://<source>
-    vox://<source>/subscriptions
-
-
-
-Notify the server and listeners that a resource is being followed
-----------------------------------------------------------------------
-
-    POST vox://<source>/subscribers
-
-Identical to [the previous endpoint](#notify-the-server-and-listeners-that-a
--user-is-following-a-resource), except that the parameter `nick` does not have
-to match the source, and the stanza is only published to the paths listed here.
-
-#### Publishes
-
-Publishes a [Subscription stanza](#Subscription-stanza) to these paths:
-
-    vox://<source>
-    vox://<source>/subscribers
-    <subscriptionUrl>/subscribers
-
-
-
-Create or update a message
------------------------------
-
-    POST vox://<source>/messages[/<message-id>]
-
-E.g., `POST vox://@spacemaus/messages/1000`.
-
-If `<message-id>` is not given, then the server will assign a new, unique ID for
-it.
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-author    | String | The nickname of the author.  E.g., `@spacemaus`.
-source    | String | The source, identical to `source` in the messageUrl.  This is included for authentication purposes.  `messageUrl` is assigned by the server and therefore cannot be signed by the author beforehand.
-[clone]   | URL | The URL of the original message from which this message is being cloned.
-[thread]  | URL | The URL of the first message in a thread of replies.  If unset, and `replyTo` is set, then its value will be copied from `replyTo`.
-[replyTo] | URL | The URL of the message being replied to.
-text      | String | The body text of the message.
-[title]   | String | An optional title.
-[userUrl] | String | An arbitrary URL associated with the message.
-[etc]     | String | An optional payload.  Can be used by clients to extend the message with custom fields.  Probably JSON encoded.
-updatedAt | Timestamp (ms) | The timestamp of the update.  If the message already exists, then the server will only accept updates that have an `updatedAt` that is larger than its current `updatedAt` value.
-sig       | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status         | int | The status code of the result.  See [Status codes](#status-codes).
-message        | [Message](#Message-stanza) | The message that was created.
-[error]        | String | If `status` is not 200, a string describing the error.
-
-#### Publishes
-
-Publishes a [Message stanza](#Message-stanza) to these paths:
-
-    vox://<source>
-    vox://<source>/messages
-    <replyTo>/replyTo (if `replyTo` is given)
-    <thread>/thread (if `thread` is given)
-
-
-
-List existing messages
--------------------------
-
-    GET vox://<source>/messages
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-[limit]        | int | The maximum number of messages to return.  Messages are returned in descending `syncedAt` order, unless otherwise specified.
-[seqAfter]     | int | (Optional) Return only messages with `seq` numbers greater than this value.  If set, then messages will be returned in ascending `seq` order.  Cannot be set with `syncedBefore` or `syncedAfter`.
-[syncedBefore] | Timestamp (ms) | (Optional) Return only messages received by the server before this timestamp (inclusive).  Defaults to infinity.
-[syncedAfter]  | Timestamp (ms) | (Optional) Return only messages received by the server after this timestamp (inclusive).  Defaults to 0.
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status         | int | The status code of the result.  See [Status codes](#status-codes).
-messages       | [Message](#Message-stanza)[] | The array of message stanzas requested.
-[error]        | String | If `status` is not 200, a string describing the error.
-
-
-
-List replies to a specific message
--------------------------------------
-
-    GET vox://<source>/messages/<message-id>/replyTo
-
-#### Parameters and Returns
-
-See [List existing messages](#list-existing-messages)
-
-
-
-List replies to a message thread
--------------------------------------
-
-    GET vox://<source>/messages/<message-id>/thread
-
-#### Parameters and Returns
-
-See [List existing messages](#list-existing-messages)
-
-
-
-Get the details of an existing message
------------------------------------------
-
-    GET vox://<source>/messages/<message-id>
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-[syncedAfter] | Timestamp (ms) | If set, then return the message only if it was synced after this timestamp.  Otherwise, return `status: 304`.
+stanza | A [Stanza](#5-stanzas) | The stanza to append.
 
 #### Returns
 
 Name | Type | Details
 :----|:-----|:-------
 status  | int | The status code of the result.  See [Status codes](#status-codes).
-message | message | The requested message.
-[error] | String | If `status` is not 200, a string describing the reason.
-
-
-
-List the subscribers to a given URL
---------------------------------------
-Any URL that is a valid `subscriptionUrl` or `routeUrl`, with "/subscribers"
-appended:
-
-    GET vox://<source>/subscribers
-    GET vox://<source>/messages/subscribers
-    GET vox://<source>/messages/:messageId/subscribers
-    GET vox://<source>/messages/:messageId/thread/subscribers
-    GET vox://<source>/messages/:messageId/replyTo/subscribers
-    GET vox://<source>/profile/subscribers
-    GET vox://<source>/status/subscribers
-    GET vox://<source>/subscribers/subscribers
-    GET vox://<source>/subscriptions/subscribers
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-limit          | int | The maximum number of subscriptions to return.
-[syncedBefore] | Timestamp (ms) | (Optional) Return only subscriptions received by the server before this timestamp (inclusive).  Defaults to infinity.
-[syncedAfter]  | Timestamp (ms) | (Optional) Return only subscriptions received by the server after this timestamp (inclusive).  Defaults to 0.
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status              | int | The status code of the result.  See [Status codes](#status-codes).
-subscriptions       | [Subscription](#Subscription-stanza)[] | The requested subscriptions.
-[error]             | String | If `status` is not 200, a string describing the error.
-
-
-
-List the subscriptions of a user
--------------------------------------
-
-    GET vox://<source>/subscriptions
-
-#### Parameters and Returns
-
-See [List the subscribers to a given URL](#list-the-subscribers-to-a-given-url)
-
-
-
-Update a user's profile details
-----------------------------------
-
-    POST vox://<source>/profile
-
-**NOTE**: This endpoint updates a user's profile details (e.g. `pubkey` and
-`interchangeUrl`), which should change rarely.  There is a sibling endpoint
-`/status` that updates a user's current status, which may change frequently.
-
-**NOTE 2**: This is an exact copy of the data registered at the Hub.  Posting it
-to the Hub and to the user's interchange server notifies any of the user's
-followers of the update immediately, which is important when either the user's
-`pubkey` or `interchangeUrl` change.
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-nick           | String | The nickname of the user.  Must be identical to `<source>`; in the URL.
-interchangeUrl | URL | The URL of the user's interchange server.
-pubkey         | String | The user's public key.
-about          | String | Details about the user.  Probably a string in JSON format.
-updatedAt      | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig            | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status      | int | The status code of the result.  See [Status codes](#status-codes).
-userProfile | [UserProfile](#UserProfile-stanza) | The current UserProfile.
-[error]     | String | If `status` is not 200, a string describing the error.
+stanza  | A [Stanza](#5-stanzas) | The stanza that was posted.  Servers may choose to return a subset of the stanza that contains only the fields assigned by the server (for example, `seq`).
+[error] | String | If `status` is not 200, a string describing the error.
 
 #### Publishes
 
-Publishes a [UserProfile stanza](#UserProfile-stanza) to these paths:
-
-    vox://<source>
-    vox://<source>/profile
+The stanza will be published to any clients that have subscribed to the stream.
 
 
 
-Read a user's profile details
------------------------
+Read a list of stanzas from a stream
+---------------------------------------
+Socket form:
 
-    GET vox://<source>/profile
+    GET vox:<owner>[/<stream-name>]
 
-#### Parameters
+HTTP form:
 
-Name | Type | Details
-:----|:-----|:-------
-[syncedAfter] | Timestamp (ms) | If set, then return the user's profile only if it was synced after this timestamp.  Otherwise, return `status: 304`.
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status      | int | The status code of the result.  See [Status codes](#status-codes).
-userProfile | UserProfile | The UserProfile of the requested user.
-[error]     | String | If `status` is not 200, a string describing the error.
-
-
-
-Update a user's status
--------------------------
-
-    POST vox://<source>/status
+    GET /[<stream-name>]?source=<owner>
 
 #### Parameters
 
 Name | Type | Details
 :----|:-----|:-------
-nick       | String | The nickname of the user.  Generally, this should be identical to `<source>`.
-statusText | String | The user-provided status text.
-isOnline   | bool | Whether the user can be considered "online".
-updatedAt  | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig        | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status     | int | The status code of the result.  See [Status codes](#status-codes).
-userStatus | [UserStatus](#UserStatus-stanza) | The current UserStatus.
-[error]    | String | If `status` is not 200, a string describing the error.
-
-#### Publishes
-
-Publishes a [UserStatus stanza](#UserStatus-stanza) to these paths:
-
-    vox://<source>
-    vox://<source>/status
-
-
-
-Read a user's status
------------------------
-
-    GET vox://<source>/status
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-[syncedAfter] | Timestamp (ms) | If set, then return the user's status only if it was synced after this timestamp.  Otherwise, return `status: 304`.
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status     | int | The status code of the result.  See [Status codes](#status-codes).
-userStatus | [UserStatus](#UserStatus-stanza) | The UserStatus of the requested user.
-[error]    | String | If `status` is not 200, a string describing the error.
-
-
-
-Block a user
----------------
-
-    POST vox://<source>/blocks
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-blocker        | String | The nickname of the user blocking.
-blockee        | String | The nickname of the user blocked.
-blocked        | bool | Whether to block or unblock the user.
-[updatedAt]    | Timestamp (ms) | The timestamp of the update.  The server will ignore any updates that have a smaller `updatedAt` than the largest it has received so far.
-sig            | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2-authentication-and-encryption)).
-
-#### Returns
-
-Name | Type | Details
-:----|:-----|:-------
-status     | int | The status code of the result.  See [Status codes](#status-codes).
-userStatus | UserStatus | The UserStatus of the requested user.
-[error]    | String | If `status` is not 200, a string describing the error.
-
-#### Publishes
-
-Publishes a [Block stanza](#Block-stanza) to these paths:
-
-    vox://<source>/blocks
-
-**NOTE** for client implementors: when a block stanza is received, it should be
-applied to the blocker's followers and republished to their followers'
-followers.  HOWEVER, it should NOT be republished for any followers who already
-have the block installed.
-
-**NOTE 2** for client implementors: this is a potential DoS attack vector, where
-relatively small requests can potentially burn a lot of server-side cycles and
-network traffic.  Block propagation should therefore be heavily rate-limited.
-[Is this true when propagation is limited to two hops?  In any case, it still
-feels like a vector for shenanigans of various types.]
-
-**NOTE 3** for client implementors: block stanzas will be signed with the
-*original* blocker's private key.
-
-
-
-List a source's blocks
------------------------
-
-    GET vox://<source>/blocks
-
-#### Parameters
-
-Name | Type | Details
-:----|:-----|:-------
-limit          | int | The maximum number of blocks to return.
-[syncedBefore] | Timestamp (ms) | (Optional) Return only blocks received by the server before this timestamp (inclusive).  Defaults to infinity.
-[syncedAfter]  | Timestamp (ms) | (Optional) Return only blocks received by the server after this timestamp (inclusive).  Defaults to 0.
+[limit]     | int | The maximum number of stanzas to return.  Defaults to 40.
+[seqStart]  | int | Return only stanzas with `seq` equal to or larger than this value.  Defaults to 1.
+[seqLimit]  | int | Return only stanzas with `seq` less than this value.  Defaults to infinity.
+[reverse]   | bool | Return stanzas in reverse `seq` order.
+[nick]      | String | If set, then returns the messages that have this `nick` value.
+[stanzaUrl] | String | If set, then returns the stanza that has this `stanzaUrl` value.
+[thread]    | String | If set, then returns the messages that have this `thread` value.  Valid only for requests where `type` = "MESSAGE".
+[replyTo]   | String | If set, then returns the messages that have this `replyTo` value.  Valid only for requests where `type` = "MESSAGE".
+[opSeq]     | String | If set, then returns the stanzas that have this `opSeq` value.
 
 #### Returns
 
 Name | Type | Details
 :----|:-----|:-------
 status  | int | The status code of the result.  See [Status codes](#status-codes).
-blocks  | Block[] | The requested blocks.
+stanzas | Array of [Stanzas](#5-stanzas) | The requested stanzas.
+[error] | String | If `status` is not 200, a string describing the error.
+
+> TODO specify `auth` for private streams.
+
+
+Read a specific stanza from a stream
+---------------------------------------
+Socket form:
+
+    GET vox:<owner>[/<stream-name>]/<seq>
+
+HTTP form:
+
+    GET /[<stream-name>/]<seq>?source=<owner>
+
+Note that if a client wishes to retrieve the most recent version of a message,
+they should send a request for that message URL.
+
+#### Parameters
+
+*None*
+
+#### Returns
+
+Name | Type | Details
+:----|:-----|:-------
+status  | int | The status code of the result.  See [Status codes](#status-codes).
+stanza  | A [Stanza](#5-stanzas) | The requested stanza.
 [error] | String | If `status` is not 200, a string describing the error.
 
 
 
 5. Stanzas
 =============
-Stanzas are the network representation of Postvox entities, such as messages and
-subscriptions.
+Stanzas are the chunks of content that users read from and write to streams.
+
+- [Common fields](#common-fields)
+- [Stanza URLs](#stanza-urls)
+- [Message stanza](#message-stanza)
+- [UserProfile stanza](#userprofile-stanza)
+- [UserStatus stanza](#userstatus-stanza)
+- [Vote stanza](#vote-stanza)
+- [Settings stanza](#settings-stanza)
+- [Invite stanza](#invite-stanza)
+- [Envelope stanza](#envelope-stanza)
 
 
-UserProfile stanza
----------------------
-Identified by the event name `"USER_PROFILE"`.
-
-Name | Type | Details
-:----|:-----|:-------
-nick           | String | The nickname of the user.
-interchangeUrl | URL | The URL of the user's interchange server.
-pubkey         | String | The user's public key.
-about          | String | Details about the user.  Probably a string in JSON format.
-updatedAt      | Timestamp (ms) | The timestamp of the update.
-hubCreatedAt   | Timestamp (ms) | The timestamp when this profile was first received by the Hub.
-hubSyncedAt    | Timestamp (ms) | The timestamp that the profile was received by the Hub.
-syncedAt       | Timestamp (ms) | The timestamp that the profile was received by the interchange server.
-sig            | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
-hubSig         | String | The Base64 encoded signature from the Hub (see [Authentication](#2-authentication-and-encryption)).
-
-#### `sig` fields
-
-- about
-- interchangeUrl
-- nick
-- pubkey
-- updatedAt
-
-**NOTE** When the user's `pubkey` has changed, the `UserProfile.sig` field
-notifying others of the change MUST be signed with the user's **previous**
-private key.
-
-#### `hubSig` fields
-
-(Note that this order is not alphabetical, but is instead the list of `sig`
-fields with the list of Hub-specific fields appended.)
-
-- about
-- interchangeUrl
-- nick
-- pubkey
-- updatedAt
-- hubCreatedAt
-- hubSyncedAt
-- sig
-
-
-
-UserStatus stanza
---------------------
-Identified by the event name `"USER_STATUS"`.
+Common fields
+-----------------
+Every stanza has these fields.
 
 Name | Type | Details
 :----|:-----|:-------
-nick       | String | The nickname of the user.
-statusText | String | The user-provided status text.
-isOnline   | bool | Whether the user is online.
-updatedAt  | Timestamp (ms) | The timestamp of the update.
-sig        | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
+type      | String | The type of the stanza.
+nick      | String | The nickname of the author of the stanza.
+stream    | String | The stream that the stanza belongs to.
+updatedAt | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+seq       | int | The sequence value of the stanza in its stream.  Assigned by the interchange server.
+[op]      | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]   | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
+sig       | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
 
-#### `sig` fields
 
-- isOnline
-- nick
-- statusText
-- updatedAt
+Stanza URLs
+--------------
+Each stanza has a unique URL of the form `vox:<owner>[/<stream-name>]/<seq>`.
+For example: "vox:spacemaus/friends/3".
 
 
 
 Message stanza
 -----------------
-Identified by the event name `"MESSAGE"`.
+A MESSAGE stanza is a user-to-user communication.  A message always exists in
+only one stream.  A message may have "clones" in other streams that refer to it.
+(Clones are used when one user wants to direct another user's attention back to
+the original message.)
 
 Name | Type | Details
 :----|:-----|:-------
-messageUrl  | URL | The URL of the message.  I.e., `vox://<source>/messages/<message-id>`.
-author      | String | The nickname of the author.  E.g., `spacemaus`.
-source      | String | The source, identical to `source` in `messageUrl`.  This is included for authentication purposes.  `messageUrl` is assigned by the server and therefore cannot be signed by the author beforehand.
-clone       | URL | The URL of the original message from which this message was cloned.
-thread      | URL | The URL of the first message in a thread of replies.
-replyTo     | URL | The URL of the message being replied to.
+type        | String | `"MESSAGE"`.
+nick        | String | The nickname of the author.  E.g., `spacemaus`.
+stream      | String | The stream, identical to `<owner>/<stream-name>` in `messageUrl`.  This is included for authentication purposes.  `messageUrl` is assigned by the server and therefore cannot be signed by the author beforehand.
+clone       | URL | The URL of the original message from which this message was cloned.  See [Stanza URLs](#stanza-urls).
+thread      | URL | The URL of the first message in a thread of replies.  See [Stanza URLs](#stanza-urls).
+replyTo     | URL | The URL of the message being replied to.  See [Stanza URLs](#stanza-urls).
 text        | String | The body text of the message.
 title       | String | The user-visible title of the message.
 userUrl     | String | An arbitrary URL associated with the message.
 etc         | String | An optional message payload.  Can be used by clients to extend the message.  Probably JSON encoded.
-createdAt   | Timestamp (ms) | The timestamp of when the message was created.
-updatedAt   | Timestamp (ms) | The timestamp of when the message was last updated (set to `createdAt` if the message was never updated).  Does not include the time when messages were posted to the message.
-[deletedAt] | Timestamp (ms) | The timestamp of when the message was deleted.  Unset if the message has not been deleted.
-sig         | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
+updatedAt   | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+createdAt   | Timestamp (ms) | The timestamp of when the stanza was created.
+[deletedAt] | Timestamp (ms) | The timestamp of when the stanza was deleted.  Unset if the stanza has not been deleted.
+sig         | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
 syncedAt    | Timestamp (ms) | The timestamp at which the interchange server received the message.
-seq         | int | The sequence number assigned by the interchange server.  This number increments by 1 for every message posted to a single source.  That is, `vox://spacemaus` will have a list of messages with `seq` numbers of `[1, 2, 3, ...]`, and `vox://landcatt` will have its own list of messages with `seq` numbers of `[1, 2, 3, ...]`.  Clients can fetch missing messages by filling in the gaps in the list.
+seq         | int | The sequence number assigned by the interchange server.
+[op]        | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]     | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
+
 
 #### `sig` fields
 
-- author
 - clone
 - deletedAt
 - etc
+- nick
+- op
+- opSeq
 - replyTo
-- source
+- stream
 - text
 - thread
 - title
+- type
 - updatedAt
 - userUrl
 
 
 
-Subscription stanza
-----------------------
-Identified by the event name `"SUBSCRIPTION"`.
+UserProfile stanza
+---------------------
 
 Name | Type | Details
 :----|:-----|:-------
-subscriptionUrl | URL | The URL of the subscription.
-nick            | String | The nickname of the subscriber.
-weight          | int | The weight of the subscription.
-updatedAt       | Timestamp (ms) | The (client-provided) timestamp of the command.
-sig             | String | The Base64 encoded signature (see [Authentication](#2-authentication-and-encryption)).
+type           | String | `"USER PROFILE"`.
+nick           | String | The nickname of the user.
+stream         | String | The stream that the profile was posted to.  For UserProfiles, this should always be `"<nick>"`.
+interchangeUrl | URL | The URL of the user's interchange server.
+pubkey         | String | The user's public key.
+about          | String | Details about the user.  Probably a string in JSON format.
+updatedAt      | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+hubCreatedAt   | Timestamp (ms) | The timestamp when this profile was first received by the Hub.
+hubSyncedAt    | Timestamp (ms) | The timestamp that the profile was received by the Hub.
+syncedAt       | Timestamp (ms) | The timestamp that the profile was received by the interchange server.
+sig            | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
+hubSig         | String | The Base64 encoded signature from the Hub (see [Authentication](#2-authentication-and-encryption)).
+seq            | int | The sequence number assigned by the interchange server.
+[op]           | String | **For UserProfiles, this should always be unset.**
+[opSeq]        | int | **For UserProfiles, this should always be unset.**
+
+#### `sig` fields
+
+- about
+- interchangeUrl
+- nick
+- op
+- opSeq
+- pubkey
+- stream
+- type
+- updatedAt
+
+**NOTE**: When the user's `pubkey` has changed, the `UserProfile.sig` field
+notifying others of the change MUST be signed with the user's **previous**
+private key.
+
+**NOTE**: This stanza notifies others about updates to a user's profile details
+(e.g. `pubkey` and `interchangeUrl`), which should change rarely.  There is a
+sibling stanza [UserStatus](#UserStatus-stanza) that updates a user's current
+status, which may change frequently.
+
+**NOTE**: This is an exact copy of the data registered at the Hub.  Posting it
+to the Hub and to the user's interchange server notifies any of the user's
+followers of the update immediately, which is important when either the user's
+`pubkey` or `interchangeUrl` change.
+
+#### `hubSig` fields
+
+When the Hub receives a profile update, it signs these fields with its keys and
+stores the signature in `hubSig`.
+
+- about
+- hubCreatedAt
+- hubSyncedAt
+- interchangeUrl
+- nick
+- op
+- opSeq
+- pubkey
+- sig
+- stream
+- type
+- updatedAt
+
+
+
+UserStatus stanza
+--------------------
+
+Name | Type | Details
+:----|:-----|:-------
+type       | String | `"USER_STATUS"`.
+nick       | String | The nickname of the user.
+stream     | String | The stream that the status was posted to.  E.g., "spacemaus/friends".
+statusText | String | The user-provided status text.
+isOnline   | bool | Whether the user is online.
+updatedAt  | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+sig        | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
+seq        | int | The sequence number assigned by the interchange server.
+[op]   | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq] | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
+
+#### `sig` fields
+
+- isOnline
+- nick
+- op
+- opSeq
+- statusText
+- stream
+- type
+- updatedAt
+
+
+
+Vote stanza
+--------------
+
+Name | Type | Details
+:----|:-----|:-------
+type      | String | `"VOTE"`.
+nick      | String | The nickname of the voter.
+stream    | String | The stream that the vote was posted to.  E.g., "spacemaus/friends".
+voteUrl   | URL | The URL that is the subject of the vote.  E.g., "vox:spacemaus/1234".
+tag       | String | The aggregation tag.  Clients may interpret this value however they like.  Max 64 chars.
+score     | int | The value of the vote.  Clients may interpret this value however they like.
+updatedAt | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+sig       | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
+seq       | int | The sequence number assigned by the interchange server.
+[op]      | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]   | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
 
 #### `sig` fields
 
 - nick
-- subscriptionUrl
+- op
+- opSeq
+- score
+- stream
+- tag
+- type
 - updatedAt
-- weight
+- voteUrl
 
 
 
-Block stanza
----------------
-Identified by the event name `"BLOCK"`.
+Settings stanza
+------------------
+Clients can post SETTINGS stanzas to a stream in order to control how the
+interchange server will respond to requests sent to that stream.
 
 Name | Type | Details
 :----|:-----|:-------
-blocker            | String | The nickname of the user blocking.
-blockee            | String | The nickname of the user blocked.
-blocked            | bool | Whether the user is blocked.
-updatedAt          | Timestamp (ms) | The timestamp of the block.
-[intermediateNick] | String | If the block has been propagated via an intermediate user, then this is their nickname.  If this field is set, then the block should be propagated to `intermedateNick`'s followers.  If this field is not set, then the block should be propagated to `blocker`'s followers.
-sig                | String | The Base64 encoded signature, signed by `blocker` (see [Authentication](#2-authentication-and-encryption)).
+type                 | String | `"SETTINGS"`.
+nick                 | String | The nickname of the user.
+stream               | String | The stream that the settings are for.
+options              | String | A JSON-encoded object.  It is an encoded object so that future additions to the protocol do not alter the `sig` fields.
+options.streamPubkey | String | The public key that will be used to sign [Envelope stanzas](#envelope-stanza) sent by `"__private__"`.
+options.allowPublic  | bool | Whether the interchange server will allow public stanzas.  If false, then it will only accept [Envelope stanzas](#envelope-stanza) signed by `"__private__"`.
+sig                  | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
+updatedAt            | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+seq                  | int | The sequence number assigned by the interchange server.
+[op]                 | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]              | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
 
 #### `sig` fields
 
-- blocked
-- blockee
-- blocker
-- intermediateNick
+- nick
+- op
+- opSeq
+- options
+- stream
+- type
+- updatedAt
+
+
+
+Invite stanza
+----------------
+Clients can send INVITE stanzas to invite other users to private, encrypted
+streams. INVITE stanzas MUST always be enclosed in an [Envelope stanza](#envelope-stanza).
+
+Name | Type | Details
+:----|:-----|:-------
+type          | String | `"INVITE"`.
+nick          | String | The nickname of the inviter.
+stream        | String | The stream that the invitation was posted to.  E.g., "spacemaus/private".
+inviteTo      | String | The name of the stream that the invitation is to.
+contentKey    | String | The symmetric key used to encrypt and decrypt envelope contents in the `inviteTo` stream.
+streamPrivkey | String | The private key that is used to sign envelopes in the `inviteTo` stream.
+sig           | String | The Base64 encoded signature of the author (see [Authentication](#2-authentication-and-encryption)).
+updatedAt     | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+seq           | int | The sequence value of the stanza in its stream.  Usually unset, since invites are sent in envelopes.
+[op]          | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]       | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
+
+#### `sig` fields
+
+- contentKey
+- inviteTo
+- nick
+- op
+- opSeq
+- stream
+- streamPrivkey
+- type
+- updatedAt
+
+
+
+Envelope stanza
+------------------
+Clients can use ENVELOPE stanzas to enclose private, encrypted stanzas.
+
+Name | Type | Details
+:----|:-----|:-------
+type       | String | `"ENVELOPE"`.
+nick       | String | The nickname of the author.  This may be `"__private__"` if the contents of the envelope have been signed with a stream key instead of a user key.
+stream     | String | The stream that the stanza belongs to.
+contents   | String | The encrypted contents of the envelope.  Generally, this will be a JSON-encoded stanza.
+contentKey | String | The symmetric key used to encrypt envelope contents.  The key is itself encrypted with the public key of the intended recipient.  In most cases, this field will only be set when the contents are an Invite stanza.
+updatedAt  | Timestamp (ms) | The (client-provided) timestamp of the stanza.
+seq        | int | The sequence value of the stanza in its stream.  Assigned by the interchange server.
+[op]       | String | The operation to apply to the stream.  One of "POST", "PUT", or "DELETE".  Defaults to "POST".
+[opSeq]    | int | The `seq` value of the stanza that is the target of a "PUT" or "DELETE" `op`.
+sig        | String | The Base64 encoded signature.  **NOTE** If `nick` is `"__private__"`, then the private key used to sign an envelope is NOT the key of the author of the contents of the envelope.  Instead, it is the private key received via an [Invite stanza](#invite-stanza).  (See [Authentication](#2-authentication-and-encryption)).
+
+#### `sig` fields
+
+- contentKey
+- contents
+- nick
+- op
+- opSeq
+- stream
+- type
 - updatedAt
 
