@@ -640,7 +640,7 @@ UserProfile stanza
 
 Name | Type | Details
 :----|:-----|:-------
-type           | String | `"USER PROFILE"`.
+type           | String | `"USER_PROFILE"`.
 nick           | String | The nickname of the user.
 stream         | String | The stream that the profile was posted to.  For UserProfiles, this should always be `"<nick>"`.
 interchangeUrl | URL | The URL of the user's interchange server.
