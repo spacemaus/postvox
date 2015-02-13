@@ -32,11 +32,11 @@ exports.profilesDir;
 if (process.env.NODE_ENV == 'development') {
   exports.hubUrl = urlparse.parse(commandLineArgs.hubUrl || 'http://localhost:9090');
   exports.defaultInterchangeUrl = commandLineArgs.defaultInterchangeUrl || 'http://localhost:9454'
-  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles');
+  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles-dev');
 } else {
   exports.hubUrl = urlparse.parse(commandLineArgs.hubUrl || 'http://hub.postvox.net');
   exports.defaultInterchangeUrl = commandLineArgs.defaultInterchangeUrl || 'http://vanilla.postvox.net';
-  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles-dev');
+  exports.profilesDir = commandLineArgs.profilesDir || path.join(homeDir, '.voxprofiles');
 }
 
 exports.stderrLogsPath = path.join(exports.profilesDir, 'vox.stderr');
