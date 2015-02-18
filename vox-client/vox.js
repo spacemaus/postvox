@@ -52,6 +52,11 @@ function Main() {
     process.exit(1);
   }
 
+  process.on('unhandledRejection', function(err, promise) {
+    console.error('Unhandled error', err, err.stack);
+    process.exit(1);
+  });
+
   var profileFilenames = VoxClient.prepareProfile(argv.profilesDir, argv.nick);
   var config = configs.parse(profileFilenames.configFile);
   if (!config.nick) {
