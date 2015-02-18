@@ -5,19 +5,29 @@
 var util = require('util');
 
 
-function ClientError(message) {
-  this.name = 'ClientError';
+function HttpError(statusCode, message) {
+  this.statusCode = statusCode;
   this.message = message;
-  this.statusCode = 400;
 }
-util.inherits(ClientError, Error);
+util.inherits(HttpError, Error);
+exports.HttpError = HttpError;
+
+
+function ClientError(statusCode, message) {
+  this.name = 'ClientError';
+  if (arguments.length == 1 && typeof(statusCode) != 'number') {
+    message = statusCode;
+    statusCode = 400;
+  }
+  HttpError.call(this, statusCode, message);
+}
+util.inherits(ClientError, HttpError);
 exports.ClientError = ClientError;
 
 
 function NotFoundError(message) {
   this.name = 'NotFoundError';
-  this.message = message;
-  this.statusCode = 404;
+  ClientError.call(this, 404, message);
 }
 util.inherits(NotFoundError, Error);
 exports.NotFoundError = NotFoundError;
@@ -25,8 +35,7 @@ exports.NotFoundError = NotFoundError;
 
 function AuthenticationError(message) {
   this.name = 'AuthenticationError';
-  this.message = message;
-  this.statusCode = 403;
+  ClientError.call(this, 403, message);
 }
 util.inherits(AuthenticationError, ClientError);
 exports.AuthenticationError = AuthenticationError;
@@ -34,18 +43,15 @@ exports.AuthenticationError = AuthenticationError;
 
 function ConstraintError(message) {
   this.name = 'ConstraintError';
-  this.message = message;
-  this.statusCode = 409;
+  ClientError.call(this, 409, message);
 }
 util.inherits(ConstraintError, ClientError);
 exports.ConstraintError = ConstraintError;
 
 
-
 function DuplicateTransactionError(message) {
   this.name = 'DuplicateTransactionError';
-  this.message = message;
-  this.statusCode = 409;
+  ClientError.call(this, 409, message);
 }
 util.inherits(DuplicateTransactionError, ClientError);
 exports.DuplicateTransactionError = DuplicateTransactionError;
@@ -53,8 +59,7 @@ exports.DuplicateTransactionError = DuplicateTransactionError;
 
 function ServerError(message) {
   this.name = 'ServerError';
-  this.message = message;
-  this.statusCode = 500;
+  HttpError.call(this, 500, message);
 }
-util.inherits(ServerError, Error);
+util.inherits(ServerError, HttpError);
 exports.ServerError = ServerError;

@@ -7,6 +7,7 @@
 
 
 var debug = require('debug')('vox:httpstub');
+var errors = require('./errors');
 var http = require('http');
 var P = require('bluebird');
 var urlparse = require('url');
@@ -58,8 +59,7 @@ module.exports = exports = function(hubUrl) {
             if (resp.statusCode == 200) {
               resolve(respData);
             } else {
-              var err = new Error();
-              reject({ statusCode: resp.statusCode, data: respData });
+              reject(new errors.HttpError(resp.statusCode, respData));
             }
           });
       });
@@ -97,7 +97,7 @@ module.exports = exports = function(hubUrl) {
             if (resp.statusCode == 200) {
               resolve(respData);
             } else {
-              reject({ statusCode: resp.statusCode, data: respData });
+              reject(new errors.HttpError(resp.statusCode, respData));
             }
           });
       });

@@ -6,6 +6,7 @@ var P = require('bluebird');
  *
  * @param {function(key)} init The initializer to call when a key's value is
  *     undefined.  It may return a value for the key or a Promise for the value.
+ *     If the init function fails, the process will be killed.
  */
 function Chain(init) {
   this._values = {};
@@ -19,8 +20,7 @@ function Chain(init) {
  * that they are queued.  Operations wait for the previous operation to complete
  * before executing.
  *
- * If an operation fails, then the value remains unchanged and the next
- * operation in the queue is run.
+ * If an operation fails, the process will be killed.
  *
  * @param {String} key The key associated with a value and a chain of operations
  *     on that value.
@@ -37,7 +37,7 @@ Chain.prototype.next = function(key, operation) {
     val = this._init(key)
       .catch(function(err) {
         console.error('Unhandled error in Chain init', err, err.stack);
-        throw err;
+        process.exit(1);
       });
   }
 
@@ -52,9 +52,8 @@ Chain.prototype.next = function(key, operation) {
   var newVal = P.resolve(val).then(function(valResult) {
     return P.resolve(operation(valResult))
       .catch(function(err) {
-        // If the operation errors out, pass over it.
         console.error('Unhandled error in Chain', err, err.stack);
-        return valResult;
+        process.exit(1);
       });
   })
 
@@ -75,7 +74,7 @@ Chain.prototype.get = function(key) {
     val = this._init(key)
       .catch(function(err) {
         console.error('Unhandled error in Chain init', err, err.stack);
-        throw err;
+        process.exit(1);
       })
     this._values[key] = val;
   }
