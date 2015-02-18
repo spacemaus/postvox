@@ -169,7 +169,7 @@ exports.FancyView = function() {
 
   self.mainContentBox.key(['down', 'j'], function() {
     var box = self.mainContentBox;
-    box.setScroll(box.getScroll() + 1);
+    box.scroll(1);
     box.down(1);
     self.screen.render();
   })
@@ -177,7 +177,7 @@ exports.FancyView = function() {
   self.mainContentBox.key(['up', 'k'], function() {
     var box = self.mainContentBox;
     var underscroll = box.getScroll() == 0;
-    box.setScroll(box.getScroll() - 1);
+    box.scroll(-1);
     box.up(1);
     self.screen.render();
     if (underscroll) {
