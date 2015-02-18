@@ -353,7 +353,7 @@ StreamPage.prototype.show = function(url) {
     this.vox.getInterchangeSession(voxurl.toSource(url))
       .then(function(conn) {
         view.setTitleLine('Stream: %s (%s)', colors.bold.green(url), conn.interchangeUrl);
-        view.setModeLine('In %s', colors.bold.green(url));
+        view.setModeLine('Reading %s', colors.bold.green(url));
         view.prompt();
       });
   }
@@ -569,20 +569,22 @@ MessagePrinter.prototype.printMessage = function(message, opt_alreadyPrinted) {
 
   // TODO We _could_ escape UGC.
 
-  if (message.title && message.userUrl) {
-    view.log('%s %s', when, author);
-    view.log('    %s', colors.green(message.title));
-    view.log('    %s', colors.underline(message.userUrl));
-    if (message.text) {
-      view.log('    %s', message.text);
+  if (message.title) {
+    view.appendLine(
+        util.format('%s %s %s', when, author, colors.green(message.title)),
+        stanzaUrl, message);
+    if (message.userUrl) {
+      view.log('    %s', colors.underline(message.userUrl));
     }
-  } else if (message.title) {
-    view.log('%s %s %s', when, author, colors.green(message.title));
     if (message.text) {
-      view.log('    %s', message.text);
+      message.text.split('\n').forEach(function(line) {
+        view.log('    %s', line);
+      })
     }
   } else  if (message.url) {
-    view.log('%s %s %s', when, author, colors.underline(message.userUrl));
+    view.appendLine(
+        util.format('%s %s %s', when, author, colors.underline(message.userUrl)),
+        stanzaUrl, message);
     if (message.text) {
       view.log('    %s', message.text);
     }
