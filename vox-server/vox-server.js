@@ -36,6 +36,12 @@ var dbConfig = {
 };
 
 
+process.on('unhandledRejection', function(err, promise) {
+  console.error('Unhandled error', err, err.stack);
+  process.exit(1);
+});
+
+
 return interchangedb.openDb(dbConfig)
   .then(function(db) {
     var hubClient = hubclient.HubClient(argv.hubUrl, db);
