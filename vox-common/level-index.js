@@ -11,7 +11,7 @@ var util = require('util');
  *
  * An index row key looks something like this:
  *
- * <separator-A>\x00<value-A>\x00<separator-B>\x00<value-B>pk\x00<primary-key>
+ * <key-A>\x00<value-A>\x00<key-B>\x00<value-B>pk\x00<primary-key>
  *
  * E.g.:
  *
@@ -19,7 +19,7 @@ var util = require('util');
  *
  * @param {function(Object): String} getPrimaryKey Takes an object and returns
  *     the object's primary key.
- * @param {[['field-name', 'db-separator', function(v): String], ...]} arguments
+ * @param {[['field-name', 'db-key', function(v): String], ...]} arguments
  *     Index specs.  Each spec is an array of two or three items.  The first is
  *     the name of the object's field to index.  The second is the name to use
  *     when encoding it in the database index.  The optional third argument is
