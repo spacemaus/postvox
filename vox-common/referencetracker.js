@@ -25,7 +25,7 @@ exports.ReferenceTracker = function() {
    *
    * Returns true iff the target/follower pair is newly added.
    */
-  self.Add = function(target, follower) {
+  self.add = function(target, follower) {
     var followers = targetToFollowers[target];
     if (!followers) {
       followers = {};
@@ -48,7 +48,7 @@ exports.ReferenceTracker = function() {
    *
    * Returns true iff the target has no remaining followers.
    */
-  self.Remove = function(target, follower) {
+  self.remove = function(target, follower) {
     var followers = targetToFollowers[target];
     var hasAnyFollowers = false
     if (followers) {
@@ -71,7 +71,7 @@ exports.ReferenceTracker = function() {
    * Returns a map of {target: bool} where the bool is true iff the target has
    * no remaining followers.
    */
-  self.RemoveAll = function(follower) {
+  self.removeAll = function(follower) {
     var targets = followerToTargets[follower];
     if (!targets) {
       return;
@@ -98,7 +98,7 @@ exports.ReferenceTracker = function() {
    *
    * `fn(follower)` will be called only once for each unique follower.
    */
-  self.ForEachFollower = function(targets, fn) {
+  self.forEachFollower = function(targets, fn) {
     var seen = {};
     targets.forEach(function(target) {
       var followers = targetToFollowers[target];

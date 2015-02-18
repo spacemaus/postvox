@@ -68,8 +68,8 @@ var ConnectionManager = module.exports = function(hubClient, version, agent) {
           throw errors.NotFoundError(
               'Source ' + source + ' has no registered interchangeUrl');
         }
-        sourceByNickTracker.Add(source, nick);
-        interchangeBySourceTracker.Add(interchangeUrl, source);
+        sourceByNickTracker.add(source, nick);
+        interchangeBySourceTracker.add(interchangeUrl, source);
 
         if (interchangeUrl != sourceToInterchangeUrl[source]) {
           // TODO Decrement references to the old interchangeUrl in
@@ -113,11 +113,11 @@ var ConnectionManager = module.exports = function(hubClient, version, agent) {
    * @param {String} nick The nickname of the user requesting the connection.
    */
   self.release = function(source, nick) {
-    if (!sourceByNickTracker.Remove(source, nick)) {
+    if (!sourceByNickTracker.remove(source, nick)) {
       return;
     }
     var interchangeUrl = sourceToInterchangeUrl[source];
-    if (!interchangeBySourceTracker.Remove(interchangeUrl, source)) {
+    if (!interchangeBySourceTracker.remove(interchangeUrl, source)) {
       return;
     }
     var conn = self.connections[source];
