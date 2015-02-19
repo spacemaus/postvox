@@ -42,7 +42,6 @@ CheckpointStream.prototype._transform = function(stanza, encoding, callback) {
       })
       .catch(function(err) {
         callback(err);
-        throw new err;
       });
   })
   .catch(function(err) {
