@@ -75,28 +75,4 @@ describe('level-chain', function() {
         assert.equal(2, v);
       })
   })
-
-  it('rolls back seq on failure', function() {
-    return P.settle([
-          levelChain.batch('a', function(batch, seq) {
-            batch.put('one', seq);
-          }),
-          levelChain.batch('a', function(batch, seq) {
-            batch.put(null, null);
-          }),
-          levelChain.batch('a', function(batch, seq) {
-            batch.put('one', seq);
-          })
-      ])
-      .then(function() {
-        return leveldb.getAsync('one')
-      })
-      .then(function(v) {
-        assert.equal(2, v);
-        return leveldb.getAsync(levelChain.counterKeyPrefix + 'a');
-      })
-      .then(function(v) {
-        assert.equal(2, v);
-      })
-  })
 })
