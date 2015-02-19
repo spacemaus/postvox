@@ -315,7 +315,7 @@ function InterchangeConnection(connectionManager, interchangeUrl) {
       socket.emit(method, data, function(reply) {
         debug('REPLY %s %s %s\n', interchangeUrl, method, url, reply);
         if (reply && reply.status && reply.status != 200) {
-          reject(reply);
+          reject(new errors.HttpError(reply.status, reply.message));
         } else {
           resolve(reply);
         }
