@@ -15,6 +15,7 @@ var voxurl = require('vox-common/voxurl');
 function StanzaFetcher(db, getInterchangeSession) {
   var self = this;
   self.db = db;
+  self._closed = false;
   self.getInterchangeSession = getInterchangeSession;
   self._highWaterMarks = new Chain(self._fetchMostRecentStanzaSeq.bind(self));
   events.EventEmitter.call(this);
@@ -41,42 +42,45 @@ StanzaFetcher.prototype.fetchStanzas = function(url, seqStart, limit) {
   var self = this;
   return self._highWaterMarks.get(url)
     .then(function(){
-       return self.db.listStanzas({
+      if (self._closed) {
+        return [];
+      }
+      return self.db.listStanzas({
           stream: voxurl.toStream(url),
           seqStart: seqStart,
           limit: limit
       })
-    })
-    .then(function(stanzas) {
-      if (!stanzas.length) {
-        debug('No stanzas in the DB from %s/%d', url, seqStart);
-        return self._fetchGapFromNetwork(url, seqStart, limit);
-      }
-      var prevSeq = Math.max(0, seqStart - 1);
-      // Ensure that we return only a continguous list of stanzas.
-      for (var i = 0; i < stanzas.length; i++) {
-        var stanza = stanzas[i];
-        var ok = stanza.seq == prevSeq + 1 || stanza.prevSeq <= prevSeq;
-        prevSeq = stanza.seq;
-        if (!ok) {
-          if (i == 0) {
-            debug('Gap exists, fetch from %s/%d', url, seqStart);
-            return self._fetchGapFromNetwork(url, seqStart, limit);
-          } else {
-            debug('Smaller set exists, fetch from %s/%d', url, prevSeq);
-            self._fetchGapFromNetwork(url, prevSeq + 1, limit, stanza);
-            return stanzas.slice(0, i);
+      .then(function(stanzas) {
+        if (!stanzas.length) {
+          debug('No stanzas in the DB from %s/%d', url, seqStart);
+          return self._fetchGapFromNetwork(url, seqStart, limit);
+        }
+        var prevSeq = Math.max(0, seqStart - 1);
+        // Ensure that we return only a continguous list of stanzas.
+        for (var i = 0; i < stanzas.length; i++) {
+          var stanza = stanzas[i];
+          var ok = stanza.seq == prevSeq + 1 || stanza.prevSeq <= prevSeq;
+          prevSeq = stanza.seq;
+          if (!ok) {
+            if (i == 0) {
+              debug('Gap exists, fetch from %s/%d', url, seqStart);
+              return self._fetchGapFromNetwork(url, seqStart, limit);
+            } else {
+              debug('Smaller set exists, fetch from %s/%d', url, prevSeq);
+              self._fetchGapFromNetwork(url, prevSeq + 1, limit, stanza);
+              return stanzas.slice(0, i);
+            }
           }
         }
-      }
-      debug('Read %d continguous stanzas from %s/%d', stanzas.length, url, seqStart);
-      return stanzas;
+        debug('Read %d continguous stanzas from %s/%d', stanzas.length, url, seqStart);
+        return stanzas;
+      })
     })
 }
 
 
 StanzaFetcher.prototype._fetchGapFromNetwork = function(url, seqStart, limit, nextStanza, reverse) {
-  if (!this._highWaterMarks) {
+  if (!this._highWaterMarks || this._closed) {
     return [];
   }
   var self = this;
@@ -170,7 +174,7 @@ StanzaFetcher.prototype.attachListener = function(connectionManager, hubClient) 
   connectionManager.on('STANZA', function(stanza) {
     return authentication.checkStanza(hubClient, stanza)
       .then(function() {
-        if (!self._highWaterMarks) {
+        if (!self._highWaterMarks || self._closed) {
           return;
         }
         debug('Received STANZA %s/%d', stanza.stream, stanza.seq);
@@ -201,6 +205,7 @@ StanzaFetcher.prototype.attachListener = function(connectionManager, hubClient) 
 
 StanzaFetcher.prototype.close = function() {
   // TODO
+  this._closed = true;
   this.db = null;
   this.getInterchangeSession = null;
   this._highWaterMarks = null;
