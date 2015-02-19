@@ -31,25 +31,6 @@ describe('chain', function() {
     });
   })
 
-  it('catches errors', function(done) {
-    var chain = new Chain(function(key) {
-      return P.resolve('a');
-    });
-    chain.next('key', function(val) {
-      return P.reject(new Error('fake uncaught error'))
-    });
-    chain.next('key', function(val) {
-      return val + 'c';
-    });
-    chain.next('key', function(val) {
-      if (val == 'ac') {
-        done();
-      } else {
-        done(new Error('Bad val: ' + val));
-      }
-    });
-  })
-
   it('handles static init values', function(done) {
     var chain = new Chain(function(key) {
       return 'a';
