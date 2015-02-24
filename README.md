@@ -102,4 +102,5 @@ client.connect()
 Docs
 =======
 - [Detailed protocol document](Protocol.md)
+- [Lessons learned](Lessons-learned.md)
 - [TODO](TODO.md)
