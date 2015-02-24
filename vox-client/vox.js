@@ -53,7 +53,7 @@ function Main() {
   }
 
   process.on('unhandledRejection', function(err, promise) {
-    console.error('Unhandled error', err, err.stack);
+    console.error('Unhandled promise rejection', err, err.stack);
     process.exit(1);
   });
 

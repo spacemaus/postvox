@@ -13,6 +13,7 @@ function MergeStream(options) {
   this._buffers = {};
   this._isCaughtUp = {};
   this._onInputListener = this._onInput.bind(this);
+  this._onErrorListener = this._onError.bind(this);
   stream.Readable.call(this, { objectMode: true });
 }
 util.inherits(MergeStream, stream.Readable)
@@ -25,6 +26,7 @@ MergeStream.prototype.add = function(stanzaStream) {
   this._buffers[stanzaStream._stream] = [];
   this._isCaughtUp[stanzaStream._stream] = stanzaStream.isCaughtUp;
   stanzaStream.on('data', this._onInputListener);
+  stanzaStream.on('error', this._onErrorListener);
 }
 
 
@@ -35,6 +37,7 @@ MergeStream.prototype.remove = function(stream) {
       return true;
     }
     inputStream.removeListener('on', self._onInputListener);
+    inputStream.removeListener('error', self._onErrorListener);
     return false;
   })
 }
@@ -42,6 +45,11 @@ MergeStream.prototype.remove = function(stream) {
 
 MergeStream.prototype._read = function() {
   // TODO
+}
+
+
+MergeStream.prototype._onError = function(error) {
+  this.emit('error', error);
 }
 
 

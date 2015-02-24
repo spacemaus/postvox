@@ -65,7 +65,7 @@ StanzaStream.prototype._push = function(stanza) {
       this.close();
     }
   } catch (e) {
-    console.error('Error during stream read:', e, e.stack);
+    console.error('Error during stream push:', e, e.stack);
   }
 }
 
@@ -90,7 +90,7 @@ StanzaStream.prototype._pushBatch = function(stanzas) {
       self._isReadReady = self.push(batch);
       self._pushCaughtUpMeta(maxSeq);
     } catch (e) {
-      console.error('Error during stream read:', e, e.stack);
+      console.error('Error during stream push:', e, e.stack);
     }
     if (shouldClose) {
       self.close();
@@ -119,6 +119,11 @@ StanzaStream.prototype._pushCaughtUpMeta = function(seq) {
         self.push(self._batchMode ? [meta] : meta);
       }
     })
+    .catch(function(err) {
+      self.emit('error',
+          new StanzaStreamError('Error pushing INTERNAL_META: ' + self._url, err));
+    });
+}
 }
 
 
@@ -137,11 +142,14 @@ StanzaStream.prototype._read = function() {
     return;
   }
   self._checkpointChain.next(self._stream, function(seqCheckpoint) {
-    if (self._closed) {
-      return seqCheckpoint;
-    }
-    return self._fetchStanzas(seqCheckpoint);
-  });
+      if (self._closed) {
+        return seqCheckpoint;
+      }
+      return self._fetchStanzas(seqCheckpoint);
+    })
+    .catch(function(err) {
+      self.emit('error', 'Error reading from: ' + self._url, err);
+    });
 }
 
 
@@ -159,6 +167,10 @@ StanzaStream.prototype._fetchStanzas = function(seqCheckpoint) {
       seqCheckpoint = stanzas[stanzas.length - 1].seq;
       debug('Advancing checkpoint to %s/%d', self._stream, seqCheckpoint);
       return seqCheckpoint;
+    })
+    .catch(function(err) {
+      self.emit('error', new StanzaStreamError(
+          'Error fetching stanzas for ' + self._url, err));
     })
 }
 
@@ -217,3 +229,10 @@ StanzaStream.prototype._loadCheckpoint = function() {
     });
 }
 
+
+function StanzaStreamError(message, cause) {
+  this.message = message;
+  this.cause = cause;
+}
+util.inherits(StanzaStreamError, Error);
+module.exports.StanzaStreamError = StanzaStreamError;

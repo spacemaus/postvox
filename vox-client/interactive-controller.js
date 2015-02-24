@@ -49,6 +49,10 @@ InteractiveController.prototype.start = function() {
     }
   });
 
+  this.vox.on('error', function(error) {
+    view.log(colors.red('Error: %s'), error);
+  })
+
   this.showStreamPage('__everything__');
 }
 
@@ -181,7 +185,8 @@ function InboxPage(controller, vox, view) {
         startSeq: 1,
         checkpointKey: SYNC_CHECKPOINT
     })
-    .on('data', this._incrementUnreadCount.bind(this));
+    .on('data', this._incrementUnreadCount.bind(this))
+    .on('error', this._onReadStreamError.bind(this));
 }
 
 InboxPage.prototype.show = function() {
@@ -270,6 +275,10 @@ InboxPage.prototype.removeSubscription = function(stream) {
   this.view.prompt();
 }
 
+InboxPage.prototype._onReadStreamError = function(error) {
+  this.view.log(colors.red('Read error: %s'), error);
+}
+
 InboxPage.prototype.hide = function() {
   this.visible = false;
 }
@@ -345,7 +354,7 @@ StreamPage.prototype.show = function(url) {
   if (url == '__everything__') {
     stream = undefined;
     view.setTitleLine(colors.bold.cyan('All subscriptions'));
-    view.setModeLine('');
+    view.setModeLine('Viewing all subscriptions');
     view.prompt();
   } else {
     stream = voxurl.toStream(url);
@@ -355,7 +364,10 @@ StreamPage.prototype.show = function(url) {
         view.setTitleLine('Stream: %s (%s)', colors.bold.green(url), conn.interchangeUrl);
         view.setModeLine('Reading %s', colors.bold.green(url));
         view.prompt();
-      });
+      })
+      .catch(function(err) {
+        view.log(colors.red('Oops, could not view the stream %s: %s'), stream, err.message);
+      })
   }
 
   // Populate the stream display:
@@ -376,6 +388,9 @@ StreamPage.prototype.show = function(url) {
     });
     self.view.scrollToEnd();
   });
+  this._readStream.on('error', function(error) {
+    self.view.log(colors.red('Read error: %s'), error);
+  })
   this._checkpointStream = this.vox.createCheckpointStream({ checkpointKey: SYNC_CHECKPOINT });
   this._readStream.pipe(this._checkpointStream);
 

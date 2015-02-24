@@ -140,7 +140,7 @@ VoxClient.prototype.getInterchangeSession = function(source) {
   return self.connectionManager.connect(source, self.nick)
     .then(function(conn) {
       return self._interchangeSessions.get(conn.interchangeUrl);
-    })
+    });
 }
 
 
@@ -182,7 +182,7 @@ VoxClient.prototype.connectAllSubscriptions = function() {
       }))
       .catch(function(err) {
         debug('Error', err, err.stack);
-        // TODO
+        self.emit('error', new VoxClientError('Error connecting to subscription', err));
       });
     })
 }
@@ -197,7 +197,7 @@ VoxClient.prototype._attachConnectionListeners = function() {
     self.emit('disconnect', info);
   });
   self.connectionManager.on('error', function(info) {
-    self.emit('error', info);
+    self.emit('error', new VoxClientError('Connection error', info));
   });
   self.connectionManager.on('reconnect', function(info) {
     self.emit('reconnect', info);
@@ -247,8 +247,8 @@ VoxClient.prototype._attachSessionListener = function() {
         }));
       })
       .catch(function(err) {
-        debug('Error reestablishing subscriptions to %s',
-            session.interchangeUrl, err.stack);
+        self.emit('error', new VoxClientError(
+            util.format('Error reestablishing subscriptions to %s', session.interchangeUrl), err));
       });
   })
 }
@@ -290,7 +290,8 @@ VoxClient.prototype._updateUserInterchangeLocation = function(userProfile) {
       });
     })
     .catch(function(err) {
-      debug('Error while updating a USER_PROFILE stanza', err.stack);
+      self.emit('error', new VoxClientError(
+          util.format('Error handling a USER_PROFILE stanza for %s', userProfile.nick), err));
     })
 }
 
@@ -722,3 +723,12 @@ function prepareProfileDir(profilesDir, nick) {
 function getAtMentions(text) {
   return (text.match(/@(\w+)/g) || []).map(function(t) { return t.substr(1) });
 }
+
+
+
+function VoxClientError(message, cause) {
+  this.message = message;
+  this.cause = cause;
+}
+util.inherits(VoxClientError, Error);
+module.exports.VoxClientError = VoxClientError;
