@@ -30,7 +30,7 @@ StanzaFetcher.prototype.getHighWaterMark = function(url) {
 
 
 StanzaFetcher.prototype.queueWithHighWaterMark = function(url, callback) {
-  this._highWaterMarks.next(url, function(seqHighWaterMark) {
+  return this._highWaterMarks.next(url, function(seqHighWaterMark) {
     callback(seqHighWaterMark);
     return seqHighWaterMark;
   })

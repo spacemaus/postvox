@@ -38,6 +38,10 @@ var StanzaStream = module.exports = function(voxClient, options) {
   voxClient.on('STANZA', this._listener);
   voxClient.on('close', this.close.bind(this));
 
+  if (this._waitingForSeqStart) {
+    this._fetchSeqStart(options.seqStart);
+  }
+
   stream.Readable.call(this, { objectMode: true });
 }
 util.inherits(StanzaStream, stream.Readable);
@@ -124,6 +128,18 @@ StanzaStream.prototype._pushCaughtUpMeta = function(seq) {
           new StanzaStreamError('Error pushing INTERNAL_META: ' + self._url, err));
     });
 }
+
+
+StanzaStream.prototype._fetchSeqStart = function(negativeSeqStart) {
+  var self = this;
+  self._voxClient.queueWithHighWaterMark(self._url,
+    function(highWaterMark) {
+      self._setSeqStart(Math.max(1, highWaterMark + negativeSeqStart + 1));
+    })
+    .catch(function(err) {
+      self.emit('error', new StanzaStreamError(
+          'Error fetching start seq for: ' + self._url, err));
+    })
 }
 
 

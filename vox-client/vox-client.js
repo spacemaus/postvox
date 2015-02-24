@@ -306,6 +306,11 @@ VoxClient.prototype.getHighWaterMark = function(url) {
 }
 
 
+VoxClient.prototype.queueWithHighWaterMark = function(url, fn) {
+  return this._stanzaFetcher.queueWithHighWaterMark(url, fn);
+}
+
+
 /**
  * Subscribes to stanzas published to a given stream.
  *
@@ -614,15 +619,7 @@ VoxClient.prototype.createReadStream = function(options) {
 
 
 VoxClient.prototype._createReadStream = function(options) {
-  var self = this;
-  var readStream = new StanzaStream(self, options);
-  if (options.seqStart < 0) {
-    self._stanzaFetcher.queueWithHighWaterMark(voxurl.toCanonicalUrl(options.stream),
-      function(highWaterMark) {
-        readStream._setSeqStart(Math.max(1, highWaterMark + options.seqStart + 1));
-      });
-  }
-  return readStream;
+  return new StanzaStream(this, options);
 }
 
 
@@ -662,7 +659,6 @@ VoxClient.prototype._removeFromMergeStreams = function(stream) {
  */
 VoxClient.prototype.createCheckpointStream = function(options) {
   return new CheckpointStream(this, options);
-
 }
 
 
