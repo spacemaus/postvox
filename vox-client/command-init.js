@@ -178,9 +178,7 @@ function registerNewConfig(context, config) {
       context.nick = config.nick;
     })
     .then(function() {
-      return P.join(
-          context.voxClient.subscribe(context.nick),
-          context.voxClient.subscribe(context.nick + '/private'));
+      return context.voxClient.subscribe(context.nick);
     })
     .return(config);
 }
