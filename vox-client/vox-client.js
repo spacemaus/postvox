@@ -16,7 +16,6 @@ var P = require('bluebird');
 var path = require('path');
 var StanzaFetcher = require('./stanza-fetcher');
 var StanzaStream = require('./stanza-stream');
-var stream = require('stream');
 var ursa = require('ursa');
 var util = require('util');
 var voxurl = require('vox-common/voxurl');
