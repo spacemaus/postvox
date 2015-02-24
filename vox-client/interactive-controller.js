@@ -514,14 +514,15 @@ StreamPage.prototype.printThread = function(itemKey, threadUrl) {
         thread: threadUrl
     }),
     function(root, stanzas) {
-      self.view.log(colors.underline('   Thread (%s)                         '), threadUrl);
+      self.view.log(colors.yellow('--- Thread (%s) ---------------------'), threadUrl);
       var mp = self._messagePrinter;
+      var printedMessages = {};
       mp.clearReplyChain();
       if (root) {
-        mp.printMessage(root);
+        mp.printMessage(root, printedMessages);
       }
       stanzas.forEach(function(stanza) {
-        mp.printMessage(stanza);
+        mp.printMessage(stanza, printedMessages);
       });
       self.view.selectItem(itemKey);
       self.view.scrollToEnd();
@@ -639,12 +640,13 @@ MessagePrinter.prototype.printRepliedToMessage = function(message, when) {
   var prefix = util.format('%s %s ',
       when,
       message.nick);
-  var text = message.text.substr(0, this.view.columns() - (colors.stripColors(prefix).length + 3));
-  if (text.length != message.text.length) {
-    text += '...';
+  var text = message.title ? message.title : message.text;
+  var quotedText = text.substr(0, this.view.columns() - (colors.stripColors(prefix).length + 3));
+  if (quotedText.length != text.length) {
+    quotedText += '...';
   }
   this.view.appendLine(this.view.lightBlack(
-      prefix + text,
+      prefix + quotedText,
       voxurl.getStanzaUrl(message),
       message));
 }
