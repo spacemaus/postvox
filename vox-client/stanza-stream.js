@@ -1,4 +1,4 @@
-var Chain = require('vox-common/Chain');
+var Chain = require('vox-common/chain');
 var debug = require('debug')('vox:stanza-stream');
 var P = require('bluebird');
 var stream = require('stream');

@@ -1,5 +1,5 @@
 var authentication = require('vox-common/authentication');
-var Chain = require('vox-common/Chain');
+var Chain = require('vox-common/chain');
 var colors = require('colors');
 var debug = require('debug')('vox:interactive-controller');
 var errors = require('vox-common/errors');

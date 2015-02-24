@@ -1,5 +1,5 @@
 var authentication = require('vox-common/authentication');
-var Chain = require('vox-common/Chain');
+var Chain = require('vox-common/chain');
 var debug = require('debug')('vox:stanza-fetcher');
 var errors = require('vox-common/errors');
 var events = require('events');

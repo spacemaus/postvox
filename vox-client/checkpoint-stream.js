@@ -1,4 +1,4 @@
-var Chain = require('vox-common/Chain');
+var Chain = require('vox-common/chain');
 var debug = require('debug')('vox:checkpoint-stream');
 var stream = require('stream');
 var util = require('util');
