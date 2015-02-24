@@ -8,7 +8,7 @@ var urlparse = require('url')
 
 module.exports = exports = commandLineArgs;
 
-exports.nick = commandLineArgs.nick;
+exports.nick = commandLineArgs.nick || commandLineArgs.nickname;
 
 var homeDir = exports.homeDir = process.env.HOME || process.env.HOMEPATH || process.env.HOMEDIR || process.cwd();
 
