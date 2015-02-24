@@ -634,6 +634,9 @@ VoxClient.prototype._removeMergeStream = function(mergeStream) {
 VoxClient.prototype._addToMergeStreams = function(stream) {
   var self = this;
   self._mergeStreams.forEach(function(mergeStream) {
+    if (mergeStream.hasStream(stream)) {
+      return;
+    }
     var options = mergeStream.options;
     options.stream = stream;
     mergeStream.add(self._createReadStream(options));

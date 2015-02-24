@@ -30,6 +30,16 @@ MergeStream.prototype.add = function(stanzaStream) {
 }
 
 
+MergeStream.prototype.hasStream = function(stream) {
+  for (var i = 0; i < this._inputStreams.length; i++) {
+    if (this._inputStreams[i]._stream == stream) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
 MergeStream.prototype.remove = function(stream) {
   var self = this;
   self._inputStreams = self._inputStreams.filter(function(inputStream) {
