@@ -1,6 +1,6 @@
 {
   "name": "vox-server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A server for the Postvox network",
   "author": "spacemaus@spacemaus.com",
   "main": "interchangeserver.js",
@@ -25,7 +25,7 @@
     "sequelize": "^2.0.0-rc4",
     "socket.io": "^1.2.1",
     "sqlite3": "^3.0.4",
-    "vox-common": "^0.0.2"
+    "vox-common": "^0.0.3"
   },
   "devDependencies": {
     "mocha": "^2.1.0",
