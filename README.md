@@ -1,15 +1,24 @@
 Postvox
 ==========
-A simple, open, distributed social network.
+A simple, open, distributed newsfeed network.
 
 It takes inspiration from email, IRC, and Usenet on the one hand; and Twitter,
 Facebook, and Instagram on the other.  It's real-time, and all that jazz.
 
-**Q:** What makes this special?
+**Q:** What's it good for?
 
-**A:** It's like Twitter, in that you can follow people, but it's also like
-email, in that people's data can be stored wherever they like and not just on
-one company's servers.
+**A:** Newsfeeds (like RSS) or real-time chat (like IRC or XMPP).
+
+**Q:** What makes it special?
+
+**A:** It's an open protocol like email, which means anyone can run their own
+servers and participate in the wider network.
+
+It's also easy to program custom "bots" to interact with the network.  (See
+[morsebot.js](./vox-client/examples/morsebot.js) for example, or say "@morsebot
+Hello!" to see it in action.)
+
+---
 
 Postvox is in open alpha.  You can try it out if this makes sense to you:
 
@@ -24,7 +33,8 @@ Postvox is in open alpha.  You can try it out if this makes sense to you:
 Help
 =======
 First, you need a nickname.  Run `vox init --nick <nickname>` to register a
-name. Minimum of six characters: letters and numbers only for now.
+name. Minimum of six characters, maximum of 64: letters and numbers only for
+now.
 
 When you run `vox init`, it'll create an **encryption key** for you, and store
 it in ~/.voxprofiles.  Any data you publish will be signed with this key.
