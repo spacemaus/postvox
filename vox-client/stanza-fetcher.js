@@ -41,18 +41,19 @@ StanzaFetcher.prototype.fetchStanzas = function(url, seqStart, limit) {
   debug('Reading stanzas from %s/%d', url, seqStart);
   var self = this;
   return self._highWaterMarks.get(url)
-    .then(function(){
+    .then(function(seqHighWaterMark) {
       if (self._closed) {
         return [];
       }
       return self.db.listStanzas({
           stream: voxurl.toStream(url),
           seqStart: seqStart,
+          seqLimit: seqHighWaterMark + 1,
           limit: limit
       })
       .then(function(stanzas) {
         if (!stanzas.length) {
-          debug('No stanzas in the DB from %s/%d', url, seqStart);
+          debug('No stanzas in the DB from %s/%d to %d', url, seqStart, seqHighWaterMark);
           return self._fetchGapFromNetwork(url, seqStart, limit);
         }
         var prevSeq = Math.max(0, seqStart - 1);
@@ -67,12 +68,13 @@ StanzaFetcher.prototype.fetchStanzas = function(url, seqStart, limit) {
               return self._fetchGapFromNetwork(url, seqStart, limit);
             } else {
               debug('Smaller set exists, fetch from %s/%d', url, prevSeq);
-              self._fetchGapFromNetwork(url, prevSeq + 1, limit, stanza);
-              return stanzas.slice(0, i);
+              var contiguousSlice = stanzas.slice(0, i);
+              return self._fetchGapFromNetwork(url, prevSeq + 1, limit, stanza)
+                .return(contiguousSlice);
             }
           }
         }
-        debug('Read %d continguous stanzas from %s/%d', stanzas.length, url, seqStart);
+        debug('Read %d contiguous stanzas from %s/%d', stanzas.length, url, seqStart);
         return stanzas;
       })
     })
@@ -149,7 +151,7 @@ StanzaFetcher.prototype._fetchMostRecentStanzaSeq = function(url) {
       var seq = stanza.seq;
       debug('Most recent stanza: %s/%d', url, seq);
       return self.db.insertStanza(stanza).return(seq);
-    });
+    })
 }
 
 
