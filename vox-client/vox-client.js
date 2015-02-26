@@ -269,7 +269,7 @@ VoxClient.prototype._attachStanzaListener = function(emitter) {
 
 /**
  * If a user we are following has switched their interchangeUrl, then we need to
- * connect to that new server and re- establish any subscriptions we had for the
+ * connect to that new server and re-establish any subscriptions we had for the
  * old server.
  */
 VoxClient.prototype._updateUserInterchangeLocation = function(userProfile) {
@@ -432,7 +432,7 @@ VoxClient.prototype.post = function(message, options) {
           stanza = reply.stanza;
           var targets = [];
           if (!(options && options.cloneToMentions === false)) {
-            targets.push.apply(targets, getAtMentions(stanza.text));
+            targets.push.apply(targets, VoxClient.getAtMentions(stanza.text));
           }
           if (options && options.cloneTo) {
             targets.push.apply(targets, options.cloneTo);
@@ -718,10 +718,9 @@ function prepareProfileDir(profilesDir, nick) {
 }
 
 
-function getAtMentions(text) {
-  return (text.match(/@(\w+)/g) || []).map(function(t) { return t.substr(1) });
+module.exports.getAtMentions = function(text) {
+  return (text.match(/@([\w\d]+)/g) || []).map(function(t) { return t.substr(1) });
 }
-
 
 
 function VoxClientError(message, cause) {

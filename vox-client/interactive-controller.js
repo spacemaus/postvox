@@ -7,6 +7,7 @@ var moment = require('moment');
 var P = require('bluebird');
 var urlparse = require('url');
 var util = require('util');
+var VoxClient = require('./vox-client');
 var voxurl = require('vox-common/voxurl');
 
 
@@ -457,8 +458,13 @@ StreamPage.prototype.promptForMessageInput = function(options) {
     view.setHelpLine('Replying to ' +
         (colors.cyan(replyTo.nick) + ' ' + replyTo.text.substr(0, 60)));
     view.setPrompt('Reply> ');
+    var atMentions = VoxClient.getAtMentions(replyTo.text);
     if (replyTo.nick != this.vox.nick) {
+      atMentions.push(replyTo.nick);
       view.setInputLine('@%s ', replyTo.nick);
+    }
+    if (atMentions.length) {
+      view.setInputLine(atMentions.map(function(t) { return '@' + t; }).join(',') + ' ');
     }
   } else {
     var streamName = this.streamUrl == '__everything__' ? this.vox.nick : this.streamUrl;
