@@ -1,6 +1,6 @@
 {
   "name": "vox-client",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "A basic terminal client for the Postvox network",
   "author": "spacemaus@spacemaus.com",
   "bin": {
@@ -29,7 +29,7 @@
     "sqlite3": "^3.0.4",
     "through2": "^0.6.3",
     "ursa": "^0.8.1",
-    "vox-common": "^0.0.3"
+    "vox-common": "^0.0.4"
   },
   "devDependencies": {
     "mocha": "^2.1.0",

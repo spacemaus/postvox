@@ -1,6 +1,6 @@
 {
   "name": "vox-common",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Common libs for Postvox clients and servers",
   "author": "spacemaus@spacemaus.com",
   "scripts": {
