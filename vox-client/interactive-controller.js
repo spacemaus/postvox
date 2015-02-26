@@ -117,7 +117,12 @@ InteractiveController.prototype._handleCommand = function(line) {
 }
 
 InteractiveController.prototype.command_read = function(stream) {
-  this.showStreamPage(voxurl.toCanonicalUrl(stream));
+  var self = this;
+  // TODO unsubscribe later:
+  self.vox.subscribe(stream, { updateDatabase: false })
+    .then(function(subscription) {
+      self.showStreamPage(voxurl.toCanonicalUrl(stream));
+    })
 }
 
 InteractiveController.prototype.command_follow = function(stream) {

@@ -313,11 +313,14 @@ VoxClient.prototype.queueWithHighWaterMark = function(url, fn) {
 /**
  * Subscribes to stanzas published to a given stream.
  *
- * @param stream {String} The stream to subscribe to.  Can be a full vox URL
+ * @param {String} stream The stream to subscribe to.  Can be a full vox URL
  *     (e.g., "vox:spacemaus/friends"), the abbreviated version (e.g.,
  *     "spacemaus/friends"), or the text version ("@spacemaus/friends").
+ * @param {Object} [options] Optional options.
+ * @param {bool} [options.updateDatabase] Whether the subscription should be
+ *     saved in the local database.  Defaults to true.
  */
-VoxClient.prototype.subscribe = function(stream) {
+VoxClient.prototype.subscribe = function(stream, options) {
   var self = this;
   var source = voxurl.toSource(stream);
   var url = voxurl.toCanonicalUrl(stream);
@@ -328,16 +331,20 @@ VoxClient.prototype.subscribe = function(stream) {
           updatedAt: Date.now()
       })
       .then(function() {
-        return self.db.saveSubscription({
+        var subscription = {
             url: url,
             sessionId: conn.sessionId,
             interchangeUrl: conn.interchangeUrl,
             source: source
-        })
-        .then(function(subscription) {
-          self._addToMergeStreams(stream);
+        };
+        if (options && !options.updateDatabase) {
           return subscription;
-        })
+        }
+        return self.db.saveSubscription(subscription)
+      })
+      .then(function(subscription) {
+        self._addToMergeStreams(stream);
+        return subscription;
       })
     })
 }
@@ -345,6 +352,10 @@ VoxClient.prototype.subscribe = function(stream) {
 
 /**
  * Unsubscribes from stanzas published to a given stream.
+ *
+ * @param {String} stream The stream to unsubscribe from.  Can be a full vox URL
+ *     (e.g., "vox:spacemaus/friends"), the abbreviated version (e.g.,
+ *     "spacemaus/friends"), or the text version ("@spacemaus/friends").
  */
 VoxClient.prototype.unsubscribe = function(stream) {
   var self = this;
