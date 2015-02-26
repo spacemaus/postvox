@@ -119,7 +119,7 @@ function translateText(text) {
 function sendTranslation(to, text, replyToStanza) {
   client.post({
       text: '@' + to + ' ' + text,
-      replyToStanza, replyToStanza
+      replyToStanza: replyToStanza
   })
   .catch(function(err) {
     console.error('Ooops', err);
