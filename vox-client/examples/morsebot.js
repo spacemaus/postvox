@@ -58,8 +58,7 @@ client.connect()
         } else {
           var translated = translateText(text);
           if (translated) {
-            var replyTo = message.clone || voxurl.getStanzaUrl(message);
-            sendTranslation(voxurl.toStream(replyTo), message.nick, translated, replyTo);
+            sendTranslation(message.nick, translated, message);
           }
         }
       });
@@ -96,9 +95,8 @@ function unfollowUser(nick) {
 
 function replyWithHelp(message) {
   client.post({
-      stream: message.nick,
       text: HELP_MESSAGE,
-      replyTo: voxurl.getStanzaUrl(message)
+      replyToStanza: message
   })
   .catch(function(err) {
     console.error('Ooops', err);
@@ -118,16 +116,10 @@ function translateText(text) {
 }
 
 
-function sendTranslation(stream, to, text, replyTo) {
+function sendTranslation(to, text, replyToStanza) {
   client.post({
-      // By setting `stream`, we post the message directly to the author's
-      // stream, instead of posting it to our own stream and cloning it over.
-      stream: stream,
       text: '@' + to + ' ' + text,
-      replyTo: replyTo
-  }, {
-      // We don't want to post the message to any @-mentioned streams.
-      cloneToMentions: false
+      replyToStanza, replyToStanza
   })
   .catch(function(err) {
     console.error('Ooops', err);

@@ -19,7 +19,7 @@ client.connect()
         client.post({
             stream: stanza.stream,
             text: 'Pong: ' + stanza.text,
-            replyTo: voxurl.getStanzaUrl(stanza)
+            replyToStanza: stanza
         })
       })
   })

@@ -101,20 +101,18 @@ Posts a message to a stream.
 
 Name | Type | Details
 :----|:-----|:-------
-stream  | String | The stream to post the message to.  See [`.subscribe()`](#voxclientsubscribestream---promise) for valid stream names.
-text    | String | The text of the message.
-title   | String | A title for the message.
-userUrl | String | A URL to publish with the message
-etc     | Object | Miscellaneous payload.  Will be JSON encoded, if present.
-thread  | String | The message URL of the first message in a thread.  Use `voxurl.getStanzaUrl(stanza)` to get the URL of a MESSAGE stanza.
-replyTo | String | The message URL of the message to reply to.  Use `voxurl.getStanzaUrl(stanza)` to get the URL of a MESSAGE stanza.
+stream        | String | The stream to post the message to.  See [`.subscribe()`](#voxclientsubscribestream---promise) for valid stream names.
+text          | String | The text of the message.
+title         | String | A title for the message.
+userUrl       | String | A URL to publish with the message
+etc           | Object | Miscellaneous payload.  Will be JSON encoded, if present.
+replyToStanza | [Message](../Protocol.md#message-stanza) | If set, then the message is a reply to this Message stanza.  The message's `stream`, `replyTo`, and `thread` fields will be set accordingly, and it will be cloned to the appropriate streams.
 
 #### Options fields
 
 Name | Type | Details
 :----|:-----|:-------
 cloneToMentions | bool | If true, the message will be cloned to the servers of any nicknames that were "@mentioned" in the message's text.  Defaults to true.
-cloneTo | String[] | The nicknames to clone the message to.  The message will be cloned to their interchange servers.
 
 
 ### `VoxClient.postVote(stanza)` -> `Promise<Vote>`

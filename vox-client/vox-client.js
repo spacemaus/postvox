@@ -387,12 +387,10 @@ VoxClient.prototype.listSubscriptions = function() {
  *
  * The message will be published to:
  *
- * - The user's stream.
+ * - The stream in `stream`, if present, or the user's stream if not.
  * - The streams of any users @mentioned in `text` if `options.cloneToMentions`
  *   is true.
- * - The streams of the users in `options.cloneTo`.
- * - The stream of the `replyTo` URL, if present.
- * - The stream of the `thread` URL, if present.
+ * - The stream of the `replyToStanza` stanza, if present.
  *
  * @param {Object} message The message to post.
  * @param {String} [message.stream] The stream to post the message to.  Defaults
@@ -402,17 +400,17 @@ VoxClient.prototype.listSubscriptions = function() {
  * @param {String} [message.title] A title for the message, like an email
  *     subject or newspost title.
  * @param {String} [message.userUrl] A URL to publish with the message.
- * @param {Object} [message.etc] Miscellaneous payload.  Will be JSON encoded, if present.
- * @param {String} [message.thread] The message URL of the first message in a thread.
- * @param {String} [message.replyTo] The message URL of the message to reply to.
+ * @param {Object} [message.etc] Miscellaneous payload.  Will be JSON encoded,
+ *     if present.
+ * @param {Object} [message.replyToStanza] If set, then the message is a reply
+ *     to this Message stanza.  The message's `stream`, `replyTo`, and `thread`
+ *     fields will be set accordingly, and it will be cloned to the appropriate
+ *     streams.
  *
  * @param {Object} options Optional options.
  * @param {bool} [options.cloneToMentions] If true, the message will be cloned
  *     to the servers of any nicknames that were "@mentioned" in the message's
  *     text.  Defaults to true.
- * @param {String[]} [options.cloneTo] The nicknames to clone the message to.
- *     The message will be cloned to their interchange servers.
- * @return {Promise<Object>} The posted message.
  */
 VoxClient.prototype.post = function(message, options) {
   var self = this;
@@ -427,15 +425,20 @@ VoxClient.prototype.post = function(message, options) {
       var stanza = {
           type: 'MESSAGE',
           nick: self.nick,
-          stream: message.stream || self.nick,
           text: message.text,
           title: message.title,
           userUrl: message.userUrl,
-          thread: message.thread,
-          replyTo: message.replyTo,
           etc: message.etc,
           updatedAt: message.updatedAt
       };
+      var replyToStanza = message.replyToStanza;
+      if (replyToStanza) {
+        stanza.stream = message.stream || replyToStanza.stream;
+        stanza.replyTo = replyToStanza.clone || voxurl.getStanzaUrl(replyToStanza);
+        stanza.thread = replyToStanza.thread || stanza.replyTo;
+      } else {
+        stanza.stream = message.stream || self.nick;
+      }
       debug('Sending', stanza);
       authentication.signStanza(stanza, self.privkey);
       return conn.POST(url, { stanza: stanza })
@@ -445,14 +448,14 @@ VoxClient.prototype.post = function(message, options) {
           if (!(options && options.cloneToMentions === false)) {
             targets.push.apply(targets, VoxClient.getAtMentions(stanza.text));
           }
-          if (options && options.cloneTo) {
-            targets.push.apply(targets, options.cloneTo);
-          }
-          if (stanza.replyTo) {
-            targets.push(voxurl.toStream(stanza.replyTo));
-          }
-          if (stanza.thread) {
-            targets.push(voxurl.toStream(stanza.thread));
+          if (replyToStanza) {
+            targets.push(replyToStanza.stream);
+            if (replyToStanza.clone) {
+              targets.push(voxurl.toStream(replyToStanza.clone));
+            }
+            if (replyToStanza.thread) {
+              targets.push(voxurl.toStream(replyToStanza.thread));
+            }
           }
           if (!targets.length) {
             return stanza;
@@ -463,9 +466,10 @@ VoxClient.prototype.post = function(message, options) {
             if (target == stanza.stream) {
               return;
             }
+            var stanzaJson = JSON.stringify(stanza);
             return self.connectionManager.connect(voxurl.toSource(target), nick)
               .then(function(conn) {
-                var clone = JSON.parse(JSON.stringify(stanza));
+                var clone = JSON.parse(stanzaJson);
                 clone.stream = target;
                 clone.clone = messageUrl;
                 delete clone.sig;

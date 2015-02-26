@@ -497,8 +497,7 @@ StreamPage.prototype.handleMessageCommand = function(options, line) {
       text: line,
   };
   if (options && options.replyTo) {
-    stanza.replyTo = voxurl.getStanzaUrl(options.replyTo);
-    stanza.thread = options.replyTo.thread || stanza.replyTo;
+    stanza.replyToStanza = options.replyTo;
   }
   this.vox.post(stanza)
     .then(function(message) {
@@ -575,20 +574,20 @@ function MessagePrinter(view) {
 MessagePrinter.prototype.printMessage = function(message, opt_alreadyPrinted) {
   var view = this.view;
   var stanzaUrl = voxurl.getStanzaUrl(message)
-  var url = message.clone || stanzaUrl;
+  var originalUrl = voxurl.getOriginalStanzaUrl(message);
 
   if (message.clone) {
     this.cloneToMessageUrl[stanzaUrl] = message.clone;
   }
 
   if (opt_alreadyPrinted) {
-    if (url in opt_alreadyPrinted) {
+    if (originalUrl in opt_alreadyPrinted) {
       return;
     }
-    opt_alreadyPrinted[url] = 1;
+    opt_alreadyPrinted[originalUrl] = 1;
   }
 
-  this.messages[stanzaUrl] = message;
+  this.messages[originalUrl] = message;
 
   var formattedSyncedAt = moment(message.syncedAt).format('MMM D h:mm:ss A');
   var when = view.lightBlack(formattedSyncedAt);
@@ -599,7 +598,7 @@ MessagePrinter.prototype.printMessage = function(message, opt_alreadyPrinted) {
   if (message.title) {
     view.appendLine(
         util.format('%s %s %s', when, author, colors.green(message.title)),
-        stanzaUrl, message);
+        originalUrl, message);
     if (message.userUrl) {
       view.log('    %s', colors.underline(message.userUrl));
     }
@@ -608,38 +607,37 @@ MessagePrinter.prototype.printMessage = function(message, opt_alreadyPrinted) {
         view.log('    %s', line);
       })
     }
-  } else  if (message.url) {
+  } else  if (message.userUrl) {
     view.appendLine(
         util.format('%s %s %s', when, author, colors.underline(message.userUrl)),
-        stanzaUrl, message);
+        originalUrl, message);
     if (message.text) {
       view.log('    %s', message.text);
     }
   } else {
     var indent = '';
     if (message.replyTo) {
-      var replyTo = this.cloneToMessageUrl[message.replyTo] || message.replyTo;
+      var replyTo = message.replyTo;
       var i = this.replyChain.indexOf(replyTo);
-      indent = colors.yellow('└ ');
       if (i != -1) {
-        i = Math.min(i, 2);
-        indent = ' '.repeat(i * 2) + colors.yellow('└ ');
+        indent = ' '.repeat(Math.min(i, 2) * 2) + colors.yellow('└ ');
         this.replyChain.splice(i + 1);
-        this.replyChain.push(url);
+        this.replyChain.push(originalUrl);
       } else {
+        indent = colors.yellow('└ ');
         var repliedTo = this.messages[replyTo];
         if (repliedTo) {
           var whenz = '-'.repeat(colors.stripColors(formattedSyncedAt).length - 2) + view.lightBlack('>>');
           this.printRepliedToMessage(repliedTo, whenz);
-          this.replyChain = [replyTo, url];
+          this.replyChain = [replyTo, originalUrl];
         }
       }
     }
     if (!indent)  {
-      this.replyChain = [url];
+      this.replyChain = [originalUrl];
     }
     var line = util.format('%s %s%s %s', when, indent, author, message.text);
-    view.appendLine(line, stanzaUrl, message);
+    view.appendLine(line, originalUrl, message);
   }
 }
 

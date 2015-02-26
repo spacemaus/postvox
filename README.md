@@ -84,7 +84,6 @@ Example:
 
 ```js
 var VoxClient = require('vox-client')
-var voxurl = require('vox-common/voxurl');
 
 var client = new VoxClient({
     agentString: 'My pingbot'
@@ -102,7 +101,7 @@ client.connect()
         client.post({
             stream: stanza.stream,
             text: 'Pong: ' + stanza.text,
-            replyTo: voxurl.getStanzaUrl(stanza)
+            replyToStanza: stanza
         })
       })
   })
