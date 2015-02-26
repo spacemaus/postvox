@@ -86,3 +86,15 @@ exports.toCanonicalUrl = function(stream) {
 exports.getStanzaUrl = function(stanza) {
   return 'vox:' + stanza.stream + '/' + stanza.seq;
 }
+
+
+/**
+ * Gets the canonical URL of the stanza, or the URL that it was cloned from if
+ * applicable.
+ */
+exports.getOriginalStanzaUrl = function(stanza) {
+  if (stanza.type != 'MESSAGE') {
+    return exports.getStanzaUrl(stanza);
+  }
+  return stanza.clone ? stanza.clone : exports.getStanzaUrl(stanza);
+}
