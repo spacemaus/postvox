@@ -583,25 +583,32 @@ sig       | String | The Base64 encoded signature of the author (see [Authentica
 Stanza URLs
 --------------
 Each stanza has a unique URL of the form `vox:<owner>[/<stream-name>]/<seq>`.
-For example: "vox:spacemaus/friends/3".
+For example: "vox:spacemaus/friends/3".  Given a stanza, the URL can be
+constructed as `vox:<stanza.stream>/<stanza.seq>`.
 
 
 
 Message stanza
 -----------------
 A MESSAGE stanza is a user-to-user communication.  A message always exists in
-only one stream.  A message may have "clones" in other streams that refer to it.
-(Clones are used when one user wants to direct another user's attention back to
-the original message.)
+only one stream.  A message may be cloned from an original.  In this case, the
+message's `clone` field will be set.  Clones are created when a stanza is
+published to multiple streams.  For example, a stanza posted to the "spacemaus"
+stream with the text "@seadogg Hello!" can be cloned to the "seadogg" stream.
+
+Messages can be sent in reply to other messages.  In this case, the messages'
+`replyTo` and `thread` fields should be set.  The `replyTo` and `thread` fields
+should specify the URLs of the *original* messages, not their clones.
+
 
 Name | Type | Details
 :----|:-----|:-------
 type        | String | `"MESSAGE"`.
 nick        | String | The nickname of the author.  E.g., `spacemaus`.
-stream      | String | The stream, identical to `<owner>/<stream-name>` in `messageUrl`.  This is included for authentication purposes.  `messageUrl` is assigned by the server and therefore cannot be signed by the author beforehand.
+stream      | String | The stream that the stanza is in.  The format is `<nickname>[/<stream-name]`.  For example, "spacemaus" or "spacemaus/friends".
 clone       | URL | The URL of the original message from which this message was cloned.  See [Stanza URLs](#stanza-urls).
-thread      | URL | The URL of the first message in a thread of replies.  See [Stanza URLs](#stanza-urls).
-replyTo     | URL | The URL of the message being replied to.  See [Stanza URLs](#stanza-urls).
+thread      | URL | The URL of the first message in a thread of replies.  This should be the URL of an original, not a clone.  See [Stanza URLs](#stanza-urls).
+replyTo     | URL | The URL of the message being replied to.  This should be the URL of an original, not a clone.  See [Stanza URLs](#stanza-urls).
 text        | String | The body text of the message.
 title       | String | The user-visible title of the message.
 userUrl     | String | An arbitrary URL associated with the message.
