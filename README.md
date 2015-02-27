@@ -50,7 +50,8 @@ It's also easy to program custom "bots" to interact with the network.  (See
 
 **Q:** Why is the UI a lousy terminal client?  Why isn't there a mobile app/web
 client/non-Node.js client?  Why is the server an unscalable single node with a
-local database?
+local database?  What about encryption, private messages, blocking, spam
+preventions, upvotes, reshares, etc.?
 
 **A:** Postvox is a side project.  *IF* it turns out to be useful to people,
 then it would be tons of fun to build those things!  But, as with most side
