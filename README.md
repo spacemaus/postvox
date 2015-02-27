@@ -1,10 +1,13 @@
 Postvox
 ==========
+*STATUS: Draft/Proof-of-concept*
+
 A simple, open, distributed newsfeed network.
 
 It takes inspiration from email, IRC, and Usenet on the one hand; and Twitter,
 Facebook, and Instagram on the other.  It's real-time, and all that jazz.
 
+- [Detailed protocol document](Protocol.md)
 - [FAQ](#faq)
 - [Terminal client](#terminal-client)
 - [Stream mode](#stream-mode)
@@ -79,6 +82,8 @@ exercise for learning Node.js.)
 
 Terminal client
 ==================
+See the [README](./vox-client/README.md).
+
 Install the client with `npm install -g vox-client`.
 
 First, you need a nickname.  Run `vox init --nick <nickname>` to register a
@@ -159,5 +164,7 @@ client.connect()
 Docs
 =======
 - [Detailed protocol document](Protocol.md)
+- [Client README](./vox-client/README.md)
+- [Server README](./vox-server/README.md)
 - [Lessons learned](Lessons-learned.md)
 - [TODO](TODO.md)
